@@ -123,7 +123,7 @@ app.post("/registrar", async (req, res) => {
       html: `<p>Hola <b>${nombre}</b>,</p><p>Tu código de verificación es: <b>${codigo}</b></p>`
     });
 
-    res.redirect("/");
+    res.redirect("/login.html");
   } catch (err) {
     console.error(err);
     res.status(400).send("Correo ya registrado o error en la DB");
