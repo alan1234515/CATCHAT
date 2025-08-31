@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Acta de Escrutinio - Diseño Formal</title>
+<style>
+  /* Tipografía para documento formal y legible */
+  body {
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    margin: 20mm 25mm;
+    background: white;
+    color: black;
+  }
+
+  h1, h2 {
+    text-align: center;
+    margin-bottom: 0;
+    font-weight: normal;
+  }
+
+  h1 {
+    font-size: 18pt;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  h2 {
+    font-size: 14pt;
+    margin-bottom: 15px;
+  }
+
+  .fecha {
+    text-align: center;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+
+  .section {
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: inline-block;
+    width: 130px;
+    font-weight: bold;
+    vertical-align: top;
+  }
+
+  input[type="text"], input[type="number"] {
+    border: none;
+    border-bottom: 1px solid black;
+    width: 250px;
+    font-size: 12pt;
+    padding: 2px 4px;
+    outline: none;
+  }
+
+  input[type="text"]::placeholder,
+  input[type="number"]::placeholder {
+    font-style: italic;
+    color: #777;
+  }
+
+  /* Tabla para resultados y votos */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+
+  th, td {
+    border-bottom: 1px solid black;
+    padding: 6px 4px;
+    text-align: left;
+    font-size: 12pt;
+  }
+
+  th {
+    font-weight: bold;
+    border-bottom: 2px solid black;
+  }
+
+  /* Firma */
+  .signatures {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 50px;
+  }
+
+  .signature-block {
+    width: 40%;
+    text-align: center;
+  }
+
+  .signature-line {
+    border-bottom: 1px solid black;
+    margin: 0 auto;
+    width: 80%;
+    height: 40px;
+  }
+
+  /* QR */
+  .qr-container {
+    margin-top: 30px;
+    text-align: right;
+  }
+
+  #qrcode {
+    width: 90px;
+    height: 90px;
+  }
+
+  /* Botón solo visible en pantalla */
+  button {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 10px 22px;
+    font-size: 14pt;
+    cursor: pointer;
+    background-color: black;
+    color: white;
+    border: none;
+    border-radius: 4px;
+  }
+
+  button:hover {
+    background-color: #333;
+  }
+
+  /* Ocultar elementos no deseados en impresión */
+  @media print {
+    button, input {
+      display: none !important;
+    }
+    body {
+      margin: 10mm 20mm;
+    }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.0/build/qrcode.min.js"></script>
+</head>
+<body>
+
+  <h1>Acta de Escrutinio</h1>
+  <h2>Elecciones Generales 2025</h2>
+  <div class="fecha">Fecha: <span id="fecha">12/03/2025</span></div>
+
+  <div class="section">
+    <label for="provincia">Provincia:</label>
+    <input type="text" id="provincia" placeholder="Ej. Pichincha" autocomplete="off" />
+  </div>
+  <div class="section">
+    <label for="canton">Cantón:</label>
+    <input type="text" id="canton" placeholder="Ej. Quito" autocomplete="off" />
+  </div>
+  <div class="section">
+    <label for="parroquia">Parroquia:</label>
+    <input type="text" id="parroquia" placeholder="Ej. Centro Histórico" autocomplete="off" />
+  </div>
+  <div class="section">
+    <label for="junta">Junta N°:</label>
+    <input type="text" id="junta" placeholder="Ej. 23" autocomplete="off" />
+  </div>
+
+  <div class="section">
+    <h2>Resultados Generales</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Total Sufragantes</th>
+          <th>Votos Blancos</th>
+          <th>Votos Nulos</th>
+        </tr>
+        <tr>
+          <td><input type="number" id="sufragantes" min="0" /></td>
+          <td><input type="number" id="votos-blancos" min="0" /></td>
+          <td><input type="number" id="votos-nulos" min="0" /></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Votos por Candidatos</h2>
+    <table id="tabla-candidatos">
+      <thead>
+        <tr>
+          <th>Candidato (Partido)</th>
+          <th>Votos</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input type="text" class="nombre-candidato" placeholder="Nombre y partido" autocomplete="off" /></td>
+          <td><input type="number" class="votos-candidato" min="0" /></td>
+        </tr>
+        <tr>
+          <td><input type="text" class="nombre-candidato" placeholder="Nombre y partido" autocomplete="off" /></td>
+          <td><input type="number" class="votos-candidato" min="0" /></td>
+        </tr>
+        <tr>
+          <td><input type="text" class="nombre-candidato" placeholder="Nombre y partido" autocomplete="off" /></td>
+          <td><input type="number" class="votos-candidato" min="0" /></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="signatures">
+    <div class="signature-block">
+      <div class="signature-line"></div>
+      Firma Presidente JRV
+    </div>
+    <div class="signature-block">
+      <div class="signature-line"></div>
+      Firma Secretario JRV
+    </div>
+  </div>
+
+  <div class="qr-container">
+    <canvas id="qrcode"></canvas>
+  </div>
+
+  <button id="btn-print">Imprimir Acta</button>
+
+<script>
+  function generarDatosQR() {
+    const fecha = document.getElementById('fecha').innerText.trim();
+    const provincia = document.getElementById('provincia').value.trim();
+    const canton = document.getElementById('canton').value.trim();
+    const parroquia = document.getElementById('parroquia').value.trim();
+    const junta = document.getElementById('junta').value.trim();
+    const sufragantes = document.getElementById('sufragantes').value.trim();
+    const votosBlancos = document.getElementById('votos-blancos').value.trim();
+    const votosNulos = document.getElementById('votos-nulos').value.trim();
+
+    const candidatos = [];
+    const nombres = document.querySelectorAll('.nombre-candidato');
+    const votos = document.querySelectorAll('.votos-candidato');
+
+    for (let i = 0; i < nombres.length; i++) {
+      if (nombres[i].value.trim() !== '' && votos[i].value.trim() !== '') {
+        candidatos.push({
+          nombre: nombres[i].value.trim(),
+          votos: Number(votos[i].value.trim())
+        });
+      }
+    }
+
+    const datosQR = {
+      fecha,
+      provincia,
+      canton,
+      parroquia,
+      junta,
+      sufragantes: Number(sufragantes) || 0,
+      votosBlancos: Number(votosBlancos) || 0,
+      votosNulos: Number(votosNulos) || 0,
+      candidatos
+    };
+
+    return JSON.stringify(datosQR);
+  }
+
+  function actualizarQR() {
+    const canvas = document.getElementById('qrcode');
+    const datos = generarDatosQR();
+    QRCode.toCanvas(canvas, datos, { width: 90 }, function (error) {
+      if (error) {
+        console.error(error);
+        alert("Error generando código QR");
+      }
+    });
+  }
+
+  // Actualizar QR cada vez que cambie algún input
+  const inputs = document.querySelectorAll('input[type=text], input[type=number]');
+  inputs.forEach(input => {
+    input.addEventListener('input', actualizarQR);
+  });
+
+  // Botón para imprimir
+  document.getElementById('btn-print').addEventListener('click', () => {
+    window.print();
+  });
+
+  // Generar QR al cargar la página (vacío)
+  actualizarQR();
+</script>
+
+</body>
+</html>
