@@ -7,7 +7,7 @@
 <script src="https://unpkg.com/feather-icons"></script>
 <style>
   body { font-family: 'Segoe UI', sans-serif; }
-  .bubble { display: inline-block; padding: 8px 12px; border-radius: 16px; max-width: 45%; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; transition: all 0.2s ease-in-out; }
+  .bubble { display: inline-block; padding: 8px 12px; border-radius: 16px; max-width: 80%; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; transition: all 0.2s ease-in-out; }
   .bubble-left { background-color: #f3f4f6; color: #111827; align-self: flex-start; }
   .bubble-right { background-color: #3b82f6; color: white; align-self: flex-end; }
   .chat-header { font-weight: bold; padding: 12px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 8px; background-color: #2563eb; color: white; font-size: 1rem; }
@@ -26,6 +26,18 @@
   .scrollbar { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #888 #f3f4f6; }
   .scrollbar::-webkit-scrollbar { width: 6px; }
   .scrollbar::-webkit-scrollbar-thumb { background-color: #888; border-radius: 3px; }
+
+  /* Media queries para móviles */
+  @media (max-width: 768px){
+    #panel-chat { flex-direction: column; height: auto; }
+    #panel-chat > div { width: 100% !important; }
+    .bubble { max-width: 90%; }
+    .chat-header { font-size: 0.9rem; }
+    .chat-img { max-width: 120px; max-height: 120px; }
+    .msg-input { flex-wrap: wrap; gap: 4px; }
+    .msg-input input[type="text"] { flex: 1 1 100%; }
+    .msg-input button { flex: 1 1 auto; padding: 6px 8px; }
+  }
 </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
@@ -101,9 +113,7 @@ async function obtenerUsuario(){
     if(data.error) return window.location.href="login.html";
     nombreUsuario.textContent=data.nombre;
     if(data.verificado){ verificarSection.style.display="none"; cargarPanel(); }
-  }catch(err){
-    console.error("Error al obtener usuario:", err);
-  }
+  }catch(err){ console.error("Error al obtener usuario:", err); }
 }
 
 form.addEventListener("submit", async e=>{
@@ -133,7 +143,7 @@ async function cargarPanel(){
   setInterval(async ()=>{
     if(chatActivoId) await cargarMensajes(chatActivoId);
     await cargarChats();
-  },5000); // menos frecuente para no saturar
+  },5000);
 }
 
 async function cargarSolicitudes(){
@@ -165,7 +175,6 @@ async function cargarChats() {
   try{
     const res = await fetch(`${API}/chats?email=${email}`);
     const chats = await res.json();
-    console.log("Chats obtenidos:", chats);
     const container = document.getElementById("chats");
     container.innerHTML = "";
 
@@ -264,9 +273,7 @@ async function cargarMensajes(chatId, forzarScroll=false){
       }
     }
     if(estabaAlFinal || forzarScroll) container.scrollTop = container.scrollHeight;
-  }catch(err){
-    console.error("Error al cargar mensajes:", err);
-  }
+  }catch(err){ console.error("Error al cargar mensajes:", err); }
 }
 
 // Enviar mensaje
@@ -286,9 +293,7 @@ document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
     document.getElementById("nuevoMensaje").value="";
     archivoInput.value="";
     cargarMensajes(chatActivoId, true);
-  }catch(err){
-    console.error("Error al enviar mensaje:", err);
-  }
+  }catch(err){ console.error("Error al enviar mensaje:", err); }
 });
 
 // Enter para enviar
@@ -317,10 +322,7 @@ document.getElementById("enviarSolicitudBtn").addEventListener("click", async ()
     msgDiv.textContent=data.message||data.error;
     msgDiv.className=data.message?"text-green-600":"text-red-600";
     if(data.message){ document.getElementById("correoSolicitud").value=""; cargarSolicitudes(); }
-  }catch(err){
-    console.error("Error al enviar solicitud:", err);
-    msgDiv.textContent="Error de conexión"; msgDiv.className="text-red-600";
-  }
+  }catch(err){ console.error("Error al enviar solicitud:", err); msgDiv.textContent="Error de conexión"; msgDiv.className="text-red-600"; }
 });
 
 obtenerUsuario();
