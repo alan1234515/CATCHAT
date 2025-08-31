@@ -80,6 +80,7 @@
 
 <script>
 feather.replace();
+const API = "https://catchat12.onrender.com";
 const nombreUsuario=document.getElementById("nombreUsuario");
 const email=localStorage.getItem("usuarioEmail");
 const verificarSection=document.getElementById("verificar-section");
@@ -92,7 +93,7 @@ let chatActivoId=null;
 if(!email) window.location.href="login.html";
 
 async function obtenerUsuario(){
-  const res=await fetch(`/usuario?email=${email}`);
+  const res=await fetch(`${API}/usuario?email=${email}`);
   const data=await res.json();
   if(data.error) return window.location.href="login.html";
   nombreUsuario.textContent=data.nombre;
@@ -102,7 +103,7 @@ async function obtenerUsuario(){
 form.addEventListener("submit", async e=>{
   e.preventDefault();
   const codigo=form.codigo.value;
-  const res=await fetch("/verificar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,codigo})});
+  const res=await fetch(`${API}/verificar`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,codigo})});
   const data=await res.json();
   msg.textContent=data.message||data.error;
   msg.className="mt-2 p-2 rounded "+(data.message?"bg-green-200 text-green-800":"bg-red-200 text-red-800");
@@ -123,7 +124,7 @@ async function cargarPanel(){
 }
 
 async function cargarSolicitudes(){
-  const res=await fetch(`/solicitudes?email=${email}`);
+  const res=await fetch(`${API}/solicitudes?email=${email}`);
   const solicitudes=await res.json();
   const container=document.getElementById("solicitudes");
   container.innerHTML="";
@@ -135,7 +136,7 @@ async function cargarSolicitudes(){
     aceptar.textContent="Aceptar";
     aceptar.className="ml-2 bg-green-500 text-white px-2 rounded hover:bg-green-600";
     aceptar.onclick=async ()=>{
-      await fetch("/solicitud/aceptar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({solicitudId:s.id})});
+      await fetch(`${API}/solicitud/aceptar`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({solicitudId:s.id})});
       cargarSolicitudes(); cargarChats();
     };
     div.appendChild(aceptar);
@@ -144,7 +145,7 @@ async function cargarSolicitudes(){
 }
 
 async function cargarChats() {
-  const res = await fetch(`/chats?email=${email}`);
+  const res = await fetch(`${API}/chats?email=${email}`);
   const chats = await res.json();
   const container = document.getElementById("chats");
   container.innerHTML = "";
@@ -183,7 +184,7 @@ async function cargarChats() {
 async function cargarMensajes(chatId, forzarScroll=false){
   const container = document.getElementById("mensajes");
   const estabaAlFinal = container.scrollHeight - container.scrollTop <= container.clientHeight + 5;
-  const res = await fetch(`/mensajes?chatId=${chatId}`);
+  const res = await fetch(`${API}/mensajes?chatId=${chatId}`);
   const mensajes = await res.json();
   container.innerHTML = "";
 
@@ -224,7 +225,7 @@ async function cargarMensajes(chatId, forzarScroll=false){
   if(chatActivoId === chatId){
     const mensajesNoVistos = mensajes.filter(m => m.email !== email && !m.visto);
     if(mensajesNoVistos.length){
-      await fetch("/mensaje/visto", {
+      await fetch(`${API}/mensaje/visto`, {
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ chatId, deEmail: mensajesNoVistos[0].email })
@@ -248,7 +249,7 @@ document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
   formData.append("mensaje",texto);
   if(archivoInput.files.length) formData.append("archivo",archivoInput.files[0]);
   
-  await fetch("/mensajeArchivo",{method:"POST",body:formData});
+  await fetch(`${API}/mensajeArchivo`,{method:"POST",body:formData});
   document.getElementById("nuevoMensaje").value="";
   archivoInput.value="";
   cargarMensajes(chatActivoId, true);
@@ -274,7 +275,7 @@ document.getElementById("enviarSolicitudBtn").addEventListener("click", async ()
   const correoDestino=document.getElementById("correoSolicitud").value.trim();
   const msgDiv=document.getElementById("msgSolicitud");
   if(!correoDestino){ msgDiv.textContent="Ingresa un correo válido"; msgDiv.className="text-red-600"; return; }
-  const res=await fetch("/solicitud",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deEmail:email,aEmail:correoDestino})});
+  const res=await fetch(`${API}/solicitud`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deEmail:email,aEmail:correoDestino})});
   const data=await res.json();
   msgDiv.textContent=data.message||data.error;
   msgDiv.className=data.message?"text-green-600":"text-red-600";
