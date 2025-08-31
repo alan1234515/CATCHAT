@@ -277,6 +277,44 @@ app.get("/mensajes", async (req, res) => {
     res.status(500).json({ error: "Error DB" });
   }
 });
+// Obtener todos los chats de un usuario con cantidad de mensajes no leídos y último mensaje
+app.get("/chats", (req, res) => {
+  const email = req.query.email;
+
+  db.get("SELECT id FROM usuarios WHERE email=?", [email], (err, user) => {
+    if (err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
+
+    db.all(
+      `SELECT c.id,
+              CASE WHEN c.usuario1_id = ? THEN u2.nombre ELSE u1.nombre END AS nombre,
+              CASE WHEN c.usuario1_id = ? THEN u2.email ELSE u1.email END AS otroEmail,
+              m.mensaje AS ultimoMensaje,
+              m.fecha AS fechaUltimoMensaje,
+              u.email AS ultimoMensajeDe,
+              m.visto AS ultimoVisto,
+              (SELECT COUNT(*) FROM mensajes m2 
+               WHERE m2.chat_id = c.id 
+                 AND m2.de_usuario_id != ? 
+                 AND m2.visto = 0) AS cantidadNoLeidos
+       FROM chats c
+       LEFT JOIN usuarios u1 ON c.usuario1_id = u1.id
+       LEFT JOIN usuarios u2 ON c.usuario2_id = u2.id
+       LEFT JOIN mensajes m ON m.id = (
+           SELECT id FROM mensajes 
+           WHERE chat_id = c.id 
+           ORDER BY fecha DESC 
+           LIMIT 1
+       )
+       LEFT JOIN usuarios u ON m.de_usuario_id = u.id
+       WHERE c.usuario1_id = ? OR c.usuario2_id = ?`,
+      [user.id, user.id, user.id, user.id, user.id],
+      (err, rows) => {
+        if (err) return res.status(500).json({ error: "Error al traer chats" });
+        res.json(rows);
+      }
+    );
+  });
+});
 
 // -------------------- Login --------------------
 app.post("/login", async (req, res) => {
