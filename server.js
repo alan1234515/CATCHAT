@@ -249,14 +249,21 @@ app.post("/mensaje", async (req, res) => {
 
 app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
   const { chatId, deEmail, mensaje } = req.body;
-  const archivo = req.file ? `/uploads/${req.file.filename}` : null;
   try {
     const user = (await pool.query("SELECT id FROM usuarios WHERE email=$1", [deEmail])).rows[0];
     if (!user) return res.status(400).json({ error: "Usuario no encontrado" });
 
-    await pool.query("INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)", [chatId, user.id, mensaje, archivo]);
-    res.json({ message: "✅ Mensaje con archivo enviado" });
+    // URL completa del archivo para que funcione tras recargar
+    const archivoUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
+
+    await pool.query(
+      "INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)",
+      [chatId, user.id, mensaje, archivoUrl]
+    );
+
+    res.json({ message: "✅ Mensaje con archivo enviado", archivo: archivoUrl });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Error al enviar archivo" });
   }
 });
