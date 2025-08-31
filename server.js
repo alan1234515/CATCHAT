@@ -7,7 +7,7 @@ const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcryptjs");
 
 const app = express();
-const PORT = 3000;
+const PORT = 1000;
 
 // Middleware
 app.use(cors());
