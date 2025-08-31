@@ -10,11 +10,13 @@ const multer = require("multer");
 const app = express();
 const PORT = process.env.PORT || 3000; // Puerto dinámico para Render
 
-// Middleware
+// -------------------- Middleware --------------------
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, "public"))); // carpeta pública
+
+// Carpeta pública
+app.use(express.static(path.join(__dirname, "public")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // -------------------- PostgreSQL --------------------
@@ -91,6 +93,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // -------------------- Rutas HTML --------------------
+// Acceso directo por nombre de archivo
+app.get("/index.html", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/login.html", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
+app.get("/panel.html", (req, res) => res.sendFile(path.join(__dirname, "panel.html")));
+
+// Acceso por rutas amigables
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
 app.get("/registrar", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/panel", (req, res) => res.sendFile(path.join(__dirname, "panel.html")));
