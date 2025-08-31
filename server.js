@@ -3,315 +3,431 @@ const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
-const { Pool } = require("pg");
+const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcryptjs");
-const multer = require("multer");
 
 const app = express();
-const PORT = process.env.PORT || 3000; // Puerto dinámico para Render
+const PORT = 3000;
 
-// -------------------- Middleware --------------------
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Carpeta pública
-app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Servir archivos estáticos (index, login, panel)
+app.use(express.static(path.join(__dirname)));
 
-// -------------------- PostgreSQL --------------------
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://admin:uJGqPEmGBKlZ1eXXQl8GNCMIPLHHjYJs@dpg-d2pss9er433s73dl9qgg-a/mensajes12313411",
-  ssl: { rejectUnauthorized: false }
-});
-
-// Crear tablas si no existen
-async function crearTablas() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id SERIAL PRIMARY KEY,
-      nombre TEXT,
-      email TEXT UNIQUE NOT NULL,
-      contraseña TEXT NOT NULL,
-      codigo_verificacion TEXT,
-      verificado BOOLEAN DEFAULT false
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS solicitudes (
-      id SERIAL PRIMARY KEY,
-      de_usuario_id INTEGER REFERENCES usuarios(id),
-      a_usuario_id INTEGER REFERENCES usuarios(id),
-      estado TEXT DEFAULT 'pendiente',
-      fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS chats (
-      id SERIAL PRIMARY KEY,
-      usuario1_id INTEGER REFERENCES usuarios(id),
-      usuario2_id INTEGER REFERENCES usuarios(id),
-      fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS mensajes (
-      id SERIAL PRIMARY KEY,
-      chat_id INTEGER REFERENCES chats(id),
-      de_usuario_id INTEGER REFERENCES usuarios(id),
-      mensaje TEXT,
-      archivo TEXT,
-      fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      visto BOOLEAN DEFAULT false
-    )
-  `);
+// Base de datos SQLite
+let db;
+try {
+  db = new sqlite3.Database("./db.sqlite", (err) => {
+    if (err) console.error("Error al abrir DB:", err);
+    else console.log("Base de datos conectada correctamente.");
+  });
+} catch (err) {
+  console.error("Excepción al crear DB:", err);
 }
-crearTablas().catch(console.error);
 
-// -------------------- Nodemailer --------------------
+// Crear tabla usuarios
+db.run(
+  `CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT,
+    email TEXT UNIQUE,
+    contraseña TEXT,
+    codigo_verificacion TEXT,
+    verificado INTEGER DEFAULT 0
+  )`,
+  (err) => {
+    if (err) console.error("Error creando tabla usuarios:", err);
+    else console.log("Tabla usuarios lista.");
+  }
+);
+// Tabla de solicitudes
+db.run(
+  `CREATE TABLE IF NOT EXISTS solicitudes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    de_usuario_id INTEGER,
+    a_usuario_id INTEGER,
+    estado TEXT DEFAULT 'pendiente',
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(de_usuario_id) REFERENCES usuarios(id),
+    FOREIGN KEY(a_usuario_id) REFERENCES usuarios(id)
+  )`,
+  (err) => {
+    if (err) console.error("Error creando tabla solicitudes:", err);
+    else console.log("Tabla solicitudes lista.");
+  }
+);
+
+// Tabla de chats
+db.run(
+  `CREATE TABLE IF NOT EXISTS chats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario1_id INTEGER,
+    usuario2_id INTEGER,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(usuario1_id) REFERENCES usuarios(id),
+    FOREIGN KEY(usuario2_id) REFERENCES usuarios(id)
+  )`,
+  (err) => {
+    if (err) console.error("Error creando tabla chats:", err);
+    else console.log("Tabla chats lista.");
+  }
+);
+
+// Tabla de mensajes
+db.run(
+  `CREATE TABLE IF NOT EXISTS mensajes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER,
+    de_usuario_id INTEGER,
+    mensaje TEXT,
+    archivo TEXT,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(de_usuario_id) REFERENCES usuarios(id),
+    FOREIGN KEY(chat_id) REFERENCES chats(id)
+  )`
+);
+
+// Nodemailer con Gmail SMTP
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.EMAIL_USER || "alanlajones24@gmail.com",
-    pass: process.env.EMAIL_PASS || "zmbrgtugxnwxtcma"
+    user: "alanlajones24@gmail.com",
+    pass: "zmbrgtugxnwxtcma" // tu contraseña de aplicación
   }
 });
 
-// -------------------- Funciones --------------------
+// Generar código aleatorio de 6 dígitos
 function generarCodigo() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// -------------------- Multer --------------------
+const multer = require("multer");
+
+// Configuración de almacenamiento
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+  destination: function (req, file, cb) {
+    cb(null, "uploads/"); // carpeta donde se guardan archivos
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + "-" + file.originalname);
+  }
 });
-const upload = multer({ storage });
 
-// -------------------- Rutas HTML --------------------
-// Acceso directo por nombre de archivo
-app.get("/index.html", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-app.get("/login.html", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
-app.get("/panel.html", (req, res) => res.sendFile(path.join(__dirname, "panel.html")));
+const upload = multer({ storage: storage });
 
-// Acceso por rutas amigables
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
-app.get("/registrar", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-app.get("/panel", (req, res) => res.sendFile(path.join(__dirname, "panel.html")));
+// Rutas principales primero
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "login.html"))); // Login como principal
+app.get("/registrar", (req, res) => res.sendFile(path.join(__dirname, "index.html"))); // Registro
+app.get("/panel", (req, res) => res.sendFile(path.join(__dirname, "panel.html"))); // Panel
+
+// Servir archivos estáticos (css, js, imágenes) desde una carpeta específica
+app.use(express.static(path.join(__dirname, "public"))); // Mueve css/js/img aquí
+app.use("/uploads", express.static(path.join(__dirname, "uploads"))); // Archivos subidos
+
 
 // -------------------- Registro --------------------
-app.post("/registrar", async (req, res) => {
+// -------------------- Registro --------------------
+app.post("/registrar", (req, res) => {
+  if (!db) return res.status(500).send("Base de datos no disponible");
+
   const { nombre, email, contraseña } = req.body;
-  if (!nombre || !email || !contraseña) return res.status(400).send("Todos los campos son obligatorios");
+
+  if (!nombre || !email || !contraseña) {
+    return res.status(400).send("Todos los campos son obligatorios");
+  }
 
   const codigo = generarCodigo();
   const hash = bcrypt.hashSync(contraseña, 10);
 
-  try {
-    await pool.query(
-      `INSERT INTO usuarios (nombre, email, contraseña, codigo_verificacion) VALUES ($1,$2,$3,$4)`,
-      [nombre, email, hash, codigo]
-    );
+  db.run(
+    `INSERT INTO usuarios (nombre, email, contraseña, codigo_verificacion) VALUES (?, ?, ?, ?)`,
+    [nombre, email, hash, codigo],
+    async function (err) {
+      if (err) {
+        console.error("Error insertando usuario:", err);
+        return res.status(400).send("Correo ya registrado");
+      }
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER || "alanlajones24@gmail.com",
-      to: email,
-      subject: "Verifica tu cuenta",
-      text: `Hola ${nombre}, tu código de verificación es: ${codigo}`,
-      html: `<p>Hola <b>${nombre}</b>, tu código de verificación es: <b>${codigo}</b></p>`
-    };
-    await transporter.sendMail(mailOptions);
-    res.json({ message: "Usuario registrado. Verifica tu correo." });
+      const mailOptions = {
+        from: "alanlajones24@gmail.com",
+        to: email,
+        subject: "Verifica tu cuenta",
+        text: `Hola ${nombre},\n\nTu código de verificación es: ${codigo}\n\nGracias por registrarte.`,
+        html: `<p>Hola <b>${nombre}</b>,</p>
+               <p>Tu código de verificación es: <b>${codigo}</b></p>
+               <p>Gracias por registrarte en nuestro sitio.</p>`
+      };
 
-  } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: "Correo ya registrado" });
-  }
+      try {
+        await transporter.sendMail(mailOptions);
+        console.log(`Correo enviado a ${email}`);
+      } catch (error) {
+        console.error("Error al enviar correo:", error);
+      }
+
+      // Redirigir a login.html después del registro
+      res.redirect("/"); // "/" apunta a tu login.html según tu ruta principal
+    }
+  );
 });
 
 // -------------------- Verificación --------------------
-app.post("/verificar", async (req, res) => {
-  const { email, codigo } = req.body;
-  try {
-    const { rows } = await pool.query(`SELECT * FROM usuarios WHERE email=$1 AND codigo_verificacion=$2`, [email, codigo]);
-    if (rows.length === 0) return res.status(400).json({ error: "Código incorrecto" });
+app.post("/verificar", (req, res) => {
+  if (!db) return res.status(500).json({ error: "Base de datos no disponible" });
 
-    await pool.query(`UPDATE usuarios SET verificado=true WHERE email=$1`, [email]);
-    res.json({ message: "Usuario verificado correctamente" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
+  const { email, codigo } = req.body;
+
+  db.get(
+    `SELECT * FROM usuarios WHERE email = ? AND codigo_verificacion = ?`,
+    [email, codigo],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: "Error en la base de datos" });
+      if (!row) return res.status(400).json({ error: "Código incorrecto" });
+
+      db.run(
+        `UPDATE usuarios SET verificado = 1 WHERE email = ?`,
+        [email],
+        (err2) => {
+          if (err2) return res.status(500).json({ error: "Error al actualizar usuario" });
+          res.json({ message: "✅ Usuario verificado correctamente" });
+        }
+      );
+    }
+  );
+});
+// Enviar solicitud a otro usuario
+app.post("/solicitud", (req, res) => {
+  const { deEmail, aEmail } = req.body;
+
+  db.get("SELECT id FROM usuarios WHERE email=?", [deEmail], (err, de) => {
+    if(err || !de) return res.status(400).json({ error: "Usuario remitente no encontrado" });
+
+    db.get("SELECT id FROM usuarios WHERE email=?", [aEmail], (err, a) => {
+      if(err || !a) return res.status(400).json({ error: "Usuario destinatario no encontrado" });
+
+      // Verificar si ya existe solicitud pendiente
+      db.get(
+        "SELECT * FROM solicitudes WHERE de_usuario_id=? AND a_usuario_id=? AND estado='pendiente'",
+        [de.id, a.id],
+        (err, row) => {
+          if (row) return res.status(400).json({ error: "Ya existe una solicitud pendiente a este usuario" });
+
+          // Verificar si ya existe chat entre ambos usuarios
+          db.get(
+            "SELECT * FROM chats WHERE (usuario1_id=? AND usuario2_id=?) OR (usuario1_id=? AND usuario2_id=?)",
+            [de.id, a.id, a.id, de.id],
+            (err, chat) => {
+              if(chat) return res.status(400).json({ error: "Ya existe un chat con este usuario" });
+
+              db.run("INSERT INTO solicitudes (de_usuario_id, a_usuario_id) VALUES (?,?)", [de.id, a.id], (err) => {
+                if(err) return res.status(500).json({ error: "No se pudo enviar solicitud" });
+                res.json({ message: "✅ Solicitud enviada" });
+              });
+            }
+          );
+        }
+      );
+    });
+  });
+});
+
+// Listar solicitudes pendientes de un usuario
+app.get("/solicitudes", (req, res) => {
+  const email = req.query.email;
+  db.get("SELECT id FROM usuarios WHERE email=?", [email], (err, user) => {
+    if(err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
+    db.all(
+      "SELECT s.id, u.nombre, u.email FROM solicitudes s JOIN usuarios u ON s.de_usuario_id=u.id WHERE s.a_usuario_id=? AND s.estado='pendiente'",
+      [user.id],
+      (err, rows) => {
+        if(err) return res.status(500).json({ error: "Error DB" });
+        res.json(rows);
+      }
+    );
+  });
+});
+
+// Aceptar solicitud y crear chat
+app.post("/solicitud/aceptar", (req, res) => {
+  const { solicitudId } = req.body;
+  db.get("SELECT * FROM solicitudes WHERE id=?", [solicitudId], (err, sol) => {
+    if(err || !sol) return res.status(400).json({ error: "Solicitud no encontrada" });
+
+    db.run("UPDATE solicitudes SET estado='aceptada' WHERE id=?", [solicitudId], (err) => {
+      if(err) return res.status(500).json({ error: "No se pudo aceptar" });
+
+      // Verificar si ya existe chat
+      db.get(
+        "SELECT * FROM chats WHERE (usuario1_id=? AND usuario2_id=?) OR (usuario1_id=? AND usuario2_id=?)",
+        [sol.de_usuario_id, sol.a_usuario_id, sol.a_usuario_id, sol.de_usuario_id],
+        (err, chat) => {
+          if(chat) return res.json({ message: "✅ Solicitud aceptada (chat ya existía)" });
+
+          db.run("INSERT INTO chats (usuario1_id, usuario2_id) VALUES (?,?)", [sol.de_usuario_id, sol.a_usuario_id], (err) => {
+            if(err) return res.status(500).json({ error: "No se pudo crear chat" });
+            res.json({ message: "✅ Solicitud aceptada y chat creado" });
+          });
+        }
+      );
+    });
+  });
+});
+
+// Enviar mensaje
+app.post("/mensaje", (req, res) => {
+  const { chatId, deEmail, mensaje } = req.body;
+  db.get("SELECT id FROM usuarios WHERE email=?", [deEmail], (err, user) => {
+    if(err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
+    db.run("INSERT INTO mensajes (chat_id, de_usuario_id, mensaje) VALUES (?,?,?)", [chatId, user.id, mensaje], (err) => {
+      if(err) return res.status(500).json({ error: "No se pudo enviar mensaje" });
+      res.json({ message: "✅ Mensaje enviado" });
+    });
+  });
+});
+
+// Obtener mensajes de un chat
+app.get("/mensajes", (req, res) => {
+  const { chatId } = req.query;
+  db.all(
+    "SELECT m.mensaje, m.archivo, m.fecha, u.nombre, u.email, m.visto FROM mensajes m JOIN usuarios u ON m.de_usuario_id = u.id WHERE chat_id=? ORDER BY fecha ASC",
+    [chatId],
+    (err, rows) => {
+      if(err) return res.status(500).json({ error: "Error DB" });
+      res.json(rows);
+    }
+  );
+});
+
+
+// Obtener todos los chats de un usuario
+// Obtener todos los chats de un usuario con cantidad de mensajes no leídos y último mensaje
+app.get("/chats", (req, res) => {
+  const email = req.query.email;
+
+  db.get("SELECT id FROM usuarios WHERE email=?", [email], (err, user) => {
+    if (err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
+
+    db.all(
+      `SELECT c.id,
+              CASE WHEN c.usuario1_id = ? THEN u2.nombre ELSE u1.nombre END AS nombre,
+              CASE WHEN c.usuario1_id = ? THEN u2.email ELSE u1.email END AS otroEmail,
+              m.mensaje AS ultimoMensaje,
+              m.fecha AS fechaUltimoMensaje,
+              u.email AS ultimoMensajeDe,
+              m.visto AS ultimoVisto,
+              (SELECT COUNT(*) FROM mensajes m2 
+               WHERE m2.chat_id = c.id 
+                 AND m2.de_usuario_id != ? 
+                 AND m2.visto = 0) AS cantidadNoLeidos
+       FROM chats c
+       LEFT JOIN usuarios u1 ON c.usuario1_id = u1.id
+       LEFT JOIN usuarios u2 ON c.usuario2_id = u2.id
+       LEFT JOIN mensajes m ON m.id = (
+           SELECT id FROM mensajes 
+           WHERE chat_id = c.id 
+           ORDER BY fecha DESC 
+           LIMIT 1
+       )
+       LEFT JOIN usuarios u ON m.de_usuario_id = u.id
+       WHERE c.usuario1_id = ? OR c.usuario2_id = ?`,
+      [user.id, user.id, user.id, user.id, user.id],
+      (err, rows) => {
+        if (err) return res.status(500).json({ error: "Error al traer chats" });
+        res.json(rows);
+      }
+    );
+  });
+});
+
+
+app.post("/mensajeArchivo", upload.single("archivo"), (req, res) => {
+  const { chatId, deEmail, mensaje } = req.body; // Ahora Multer procesa los campos
+  const archivo = req.file ? `/uploads/${req.file.filename}` : null;
+
+  if (!mensaje && !archivo) return res.status(400).json({ error: "Mensaje o archivo requerido" });
+
+  db.get("SELECT id FROM usuarios WHERE email=?", [deEmail], (err, user) => {
+    if(err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
+
+    db.run(
+      "INSERT INTO mensajes (chat_id, de_usuario_id, mensaje, archivo) VALUES (?,?,?,?)",
+      [chatId, user.id, mensaje, archivo],
+      (err) => {
+        if(err) return res.status(500).json({ error: "No se pudo enviar mensaje" });
+        res.json({ message: "✅ Mensaje enviado", archivo });
+      }
+    );
+  });
+});
+app.post("/mensaje/visto", (req, res) => {
+  const { chatId, deEmail } = req.body;
+
+  db.get("SELECT id FROM usuarios WHERE email=?", [deEmail], (err, user) => {
+    if(err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
+
+    db.run(
+      "UPDATE mensajes SET visto = 1 WHERE chat_id = ? AND de_usuario_id = ?",
+      [chatId, user.id],
+      (err) => {
+        if(err) return res.status(500).json({ error: "No se pudo actualizar visto" });
+        res.json({ message: "Mensajes marcados como vistos" });
+      }
+    );
+  });
+});
+
+app.get("/limpiarChatsDuplicados", (req, res) => {
+  db.run(`
+    DELETE FROM chats
+    WHERE id NOT IN (
+      SELECT MIN(id)
+      FROM chats
+      GROUP BY
+        CASE WHEN usuario1_id < usuario2_id THEN usuario1_id ELSE usuario2_id END,
+        CASE WHEN usuario1_id < usuario2_id THEN usuario2_id ELSE usuario1_id END
+    )
+  `, (err) => {
+    if(err) return res.status(500).json({error:"Error limpiando chats"});
+    res.json({message:"Chats duplicados eliminados"});
+  });
 });
 
 // -------------------- Login --------------------
-app.post("/login", async (req, res) => {
-  const { email, contraseña } = req.body;
-  try {
-    const { rows } = await pool.query(`SELECT * FROM usuarios WHERE email=$1`, [email]);
-    if (rows.length === 0) return res.status(400).json({ error: "Usuario no registrado" });
+app.post("/login", (req, res) => {
+  if (!db) return res.status(500).json({ error: "Base de datos no disponible" });
 
-    const valid = bcrypt.compareSync(contraseña, rows[0].contraseña);
+  const { email, contraseña } = req.body;
+
+  db.get(`SELECT * FROM usuarios WHERE email = ?`, [email], (err, row) => {
+    if (err) return res.status(500).json({ error: "Error en la base de datos" });
+    if (!row) return res.status(400).json({ error: "Usuario no registrado" });
+
+    const valid = bcrypt.compareSync(contraseña, row.contraseña);
     if (!valid) return res.status(400).json({ error: "Contraseña incorrecta" });
 
-    res.json({ message: "Login exitoso", verificado: rows[0].verificado, nombre: rows[0].nombre });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
+    res.json({ message: "✅ Login exitoso", verificado: row.verificado, nombre: row.nombre });
+  });
 });
 
 // -------------------- Datos del usuario --------------------
-app.get("/usuario", async (req, res) => {
+app.get("/usuario", (req, res) => {
+  if (!db) return res.status(500).json({ error: "Base de datos no disponible" });
   const email = req.query.email;
-  try {
-    const { rows } = await pool.query(`SELECT nombre,email,verificado FROM usuarios WHERE email=$1`, [email]);
-    if (rows.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
+  if (!email) return res.status(400).json({ error: "Email es requerido" });
+
+  db.get(`SELECT * FROM usuarios WHERE email = ?`, [email], (err, row) => {
+    if (err) return res.status(500).json({ error: "Error en la base de datos" });
+    if (!row) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    res.json({ nombre: row.nombre, email: row.email, verificado: row.verificado });
+  });
 });
 
-// -------------------- Solicitudes --------------------
-app.post("/solicitud", async (req, res) => {
-  const { deEmail, aEmail } = req.body;
-  try {
-    const { rows: deRows } = await pool.query(`SELECT id FROM usuarios WHERE email=$1`, [deEmail]);
-    if (deRows.length === 0) return res.status(400).json({ error: "Usuario remitente no encontrado" });
-    const { rows: aRows } = await pool.query(`SELECT id FROM usuarios WHERE email=$1`, [aEmail]);
-    if (aRows.length === 0) return res.status(400).json({ error: "Usuario destinatario no encontrado" });
-
-    const deId = deRows[0].id, aId = aRows[0].id;
-
-    const { rows: existe } = await pool.query(
-      `SELECT * FROM solicitudes WHERE de_usuario_id=$1 AND a_usuario_id=$2 AND estado='pendiente'`,
-      [deId, aId]
-    );
-    if (existe.length > 0) return res.status(400).json({ error: "Ya existe una solicitud pendiente" });
-
-    const { rows: chatExist } = await pool.query(
-      `SELECT * FROM chats WHERE (usuario1_id=$1 AND usuario2_id=$2) OR (usuario1_id=$2 AND usuario2_id=$1)`,
-      [deId, aId]
-    );
-    if (chatExist.length > 0) return res.status(400).json({ error: "Ya existe un chat con este usuario" });
-
-    await pool.query(`INSERT INTO solicitudes (de_usuario_id,a_usuario_id) VALUES($1,$2)`, [deId, aId]);
-    res.json({ message: "Solicitud enviada" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
-});
-
-// -------------------- Aceptar solicitud --------------------
-app.post("/solicitud/aceptar", async (req, res) => {
-  const { solicitudId } = req.body;
-  try {
-    const { rows: solRows } = await pool.query(`SELECT * FROM solicitudes WHERE id=$1`, [solicitudId]);
-    if (solRows.length === 0) return res.status(400).json({ error: "Solicitud no encontrada" });
-    const sol = solRows[0];
-
-    await pool.query(`UPDATE solicitudes SET estado='aceptada' WHERE id=$1`, [solicitudId]);
-
-    const { rows: chatExist } = await pool.query(
-      `SELECT * FROM chats WHERE (usuario1_id=$1 AND usuario2_id=$2) OR (usuario1_id=$2 AND usuario2_id=$1)`,
-      [sol.de_usuario_id, sol.a_usuario_id]
-    );
-    if (chatExist.length > 0) return res.json({ message: "Solicitud aceptada (chat ya existía)" });
-
-    await pool.query(`INSERT INTO chats (usuario1_id, usuario2_id) VALUES ($1,$2)`, [sol.de_usuario_id, sol.a_usuario_id]);
-    res.json({ message: "Solicitud aceptada y chat creado" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
-});
-
-// -------------------- Chats y mensajes --------------------
-app.post("/mensaje", async (req, res) => {
-  const { chatId, deEmail, mensaje } = req.body;
-  try {
-    const { rows } = await pool.query(`SELECT id FROM usuarios WHERE email=$1`, [deEmail]);
-    if (rows.length === 0) return res.status(400).json({ error: "Usuario no encontrado" });
-
-    await pool.query(`INSERT INTO mensajes (chat_id,de_usuario_id,mensaje) VALUES ($1,$2,$3)`, [chatId, rows[0].id, mensaje]);
-    res.json({ message: "Mensaje enviado" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
-});
-
-app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
-  const { chatId, deEmail, mensaje } = req.body;
-  const archivo = req.file ? `/uploads/${req.file.filename}` : null;
-  try {
-    const { rows } = await pool.query(`SELECT id FROM usuarios WHERE email=$1`, [deEmail]);
-    if (rows.length === 0) return res.status(400).json({ error: "Usuario no encontrado" });
-
-    await pool.query(`INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)`, [chatId, rows[0].id, mensaje, archivo]);
-    res.json({ message: "Mensaje enviado", archivo });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
-});
-
-app.get("/mensajes", async (req, res) => {
-  const { chatId } = req.query;
-  try {
-    const { rows } = await pool.query(`
-      SELECT m.mensaje,m.archivo,m.fecha,m.visto,u.nombre,u.email
-      FROM mensajes m
-      JOIN usuarios u ON m.de_usuario_id=u.id
-      WHERE chat_id=$1
-      ORDER BY fecha ASC
-    `, [chatId]);
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
-});
-
-app.post("/mensaje/visto", async (req, res) => {
-  const { chatId, deEmail } = req.body;
-  try {
-    const { rows } = await pool.query(`SELECT id FROM usuarios WHERE email=$1`, [deEmail]);
-    if (rows.length === 0) return res.status(400).json({ error: "Usuario no encontrado" });
-
-    await pool.query(`UPDATE mensajes SET visto=true WHERE chat_id=$1 AND de_usuario_id=$2`, [chatId, rows[0].id]);
-    res.json({ message: "Mensajes marcados como vistos" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error en la base de datos" });
-  }
-});
-
-app.get("/limpiarChatsDuplicados", async (req, res) => {
-  try {
-    await pool.query(`
-      DELETE FROM chats
-      WHERE id NOT IN (
-        SELECT MIN(id)
-        FROM chats
-        GROUP BY LEAST(usuario1_id,usuario2_id), GREATEST(usuario1_id,usuario2_id)
-      )
-    `);
-    res.json({ message: "Chats duplicados eliminados" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error limpiando chats" });
-  }
-});
-
-// -------------------- Servidor --------------------
+// -------------------- Iniciar servidor --------------------
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en Render en el puerto ${PORT}`);
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
