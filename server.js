@@ -322,19 +322,32 @@ app.get("/chats", async (req, res) => {
 });
 
 // -------------------- Obtener mensajes de un chat --------------------
-app.get("/mensajes", async (req, res) => {
-  const { chatId } = req.query;
+app.post("/mensaje", async (req, res) => {
+  const { chatId, deEmail, mensaje } = req.body;
   try {
-    const rows = (await pool.query(
-      `SELECT m.id, m.mensaje, m.archivo, m.fecha, u.nombre, u.email, m.visto
-       FROM mensajes m
-       JOIN usuarios u ON m.de_usuario_id=u.id
-       WHERE m.chat_id=$1 ORDER BY m.fecha ASC`,
-      [chatId]
-    )).rows;
-    res.json(rows);
+    const user = (await pool.query("SELECT id FROM usuarios WHERE email=$1", [deEmail])).rows[0];
+    if (!user) return res.status(400).json({ error: "Usuario no encontrado" });
+
+    // Detectar si el mensaje es un link a archivo
+    let archivoUrl = null;
+    const regexUrl = /(https?:\/\/[^\s]+)/g;
+    const urls = mensaje.match(regexUrl);
+    if (urls) {
+      const url = urls[0]; // Tomamos la primera URL
+      // Verificar extensión de archivo
+      if (url.match(/\.(jpg|jpeg|png|gif|pdf|docx?|xlsx?|zip)$/i)) {
+        archivoUrl = url;
+      }
+    }
+
+    await pool.query(
+      "INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)",
+      [chatId, user.id, mensaje, archivoUrl]
+    );
+    res.json({ message: "✅ Mensaje enviado", archivo: archivoUrl });
   } catch (err) {
-    res.status(500).json({ error: "Error al cargar mensajes" });
+    console.error(err);
+    res.status(500).json({ error: "No se pudo enviar mensaje" });
   }
 });
 
