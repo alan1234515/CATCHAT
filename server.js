@@ -277,16 +277,18 @@ app.post("/mensaje/visto", async (req, res) => {
 
 // -------------------- Obtener chats --------------------
 app.get("/chats", async (req, res) => {
-  const email = req.query.email;
+  const emailUsuario = req.query.email; // o como recibas el email del usuario
   try {
     const query = `
       SELECT c.id,
-             CASE WHEN c.usuario1_email = $1 THEN c.usuario2_nombre ELSE c.usuario1_nombre END AS nombre,
-             CASE WHEN c.usuario1_email = $1 THEN c.usuario2_email ELSE c.usuario1_email END AS email,
+             CASE WHEN u1.email = $1 THEN u2.nombre ELSE u1.nombre END AS nombre,
+             CASE WHEN u1.email = $1 THEN u2.email ELSE u1.email END AS email,
              m.mensaje AS "ultimoMensaje",
              m.fecha AS "fechaUltimoMensaje",
              COALESCE(unread.cantidad, 0) AS "cantidadNoLeidos"
       FROM chats c
+      JOIN usuarios u1 ON c.usuario1_id = u1.id
+      JOIN usuarios u2 ON c.usuario2_id = u2.id
       LEFT JOIN LATERAL (
           SELECT mensaje, fecha
           FROM mensajes
@@ -296,13 +298,15 @@ app.get("/chats", async (req, res) => {
       ) m ON true
       LEFT JOIN LATERAL (
           SELECT COUNT(*) AS cantidad
-          FROM mensajes
-          WHERE chat_id = c.id AND de_email != $1 AND visto = false
+          FROM mensajes msg
+          JOIN usuarios u ON msg.de_usuario_id = u.id
+          WHERE chat_id = c.id AND u.email != $1 AND visto = false
       ) unread ON true
-      WHERE c.usuario1_email = $1 OR c.usuario2_email = $1
+      WHERE u1.email = $1 OR u2.email = $1
       ORDER BY m.fecha DESC;
     `;
-    const { rows } = await pool.query(query, [email]);
+
+    const { rows } = await pool.query(query, [emailUsuario]);
     res.json(rows);
   } catch (err) {
     console.error("Error al cargar chats:", err);
