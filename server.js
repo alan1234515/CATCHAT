@@ -10,13 +10,14 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = process.env.PORT || 1000;
 
-// Middleware
+// -------------------- Middleware --------------------
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Servir archivos estáticos
-app.use(express.static(path.join(__dirname, "public"))); // css/js/img
+app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, "public")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // -------------------- Conexión PostgreSQL --------------------
@@ -27,7 +28,7 @@ const pool = new Pool({
 
 pool.connect()
   .then(() => console.log("Conectado a PostgreSQL"))
-  .catch((err) => console.error("Error al conectar PostgreSQL:", err));
+  .catch(err => console.error("Error al conectar PostgreSQL:", err));
 
 // -------------------- Crear tablas si no existen --------------------
 async function crearTablas() {
@@ -41,7 +42,6 @@ async function crearTablas() {
         codigo_verificacion TEXT,
         verificado BOOLEAN DEFAULT FALSE
       );
-
       CREATE TABLE IF NOT EXISTS solicitudes (
         id SERIAL PRIMARY KEY,
         de_usuario_id INTEGER REFERENCES usuarios(id),
@@ -49,14 +49,12 @@ async function crearTablas() {
         estado TEXT DEFAULT 'pendiente',
         fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
       CREATE TABLE IF NOT EXISTS chats (
         id SERIAL PRIMARY KEY,
         usuario1_id INTEGER REFERENCES usuarios(id),
         usuario2_id INTEGER REFERENCES usuarios(id),
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
       CREATE TABLE IF NOT EXISTS mensajes (
         id SERIAL PRIMARY KEY,
         chat_id INTEGER REFERENCES chats(id),
@@ -90,26 +88,18 @@ function generarCodigo() {
 
 // -------------------- Multer --------------------
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename: function (req, file, cb) {
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + "-" + file.originalname);
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
 // -------------------- Rutas principales --------------------
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
 app.get("/registrar", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/panel", (req, res) => res.sendFile(path.join(__dirname, "panel.html")));
-
-// Rutas directas por nombre de archivo HTML
-app.get("/:archivo.html", (req, res) => {
-  const archivo = req.params.archivo;
-  res.sendFile(path.join(__dirname, `${archivo}.html`));
-});
 
 // -------------------- Registro --------------------
 app.post("/registrar", async (req, res) => {
@@ -121,21 +111,19 @@ app.post("/registrar", async (req, res) => {
 
   try {
     await pool.query(
-      "INSERT INTO usuarios (nombre, email, contraseña, codigo_verificacion) VALUES ($1,$2,$3,$4) RETURNING id",
+      "INSERT INTO usuarios (nombre, email, contraseña, codigo_verificacion) VALUES ($1,$2,$3,$4)",
       [nombre, email, hash, codigo]
     );
 
-    const mailOptions = {
+    await transporter.sendMail({
       from: "alanlajones24@gmail.com",
       to: email,
       subject: "Verifica tu cuenta",
       text: `Hola ${nombre}, tu código de verificación es: ${codigo}`,
       html: `<p>Hola <b>${nombre}</b>,</p><p>Tu código de verificación es: <b>${codigo}</b></p>`
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-    console.log(`Correo enviado a ${email}`);
-    res.redirect("/login.html");
+    res.redirect("/");
   } catch (err) {
     console.error(err);
     res.status(400).send("Correo ya registrado o error en la DB");
@@ -146,10 +134,7 @@ app.post("/registrar", async (req, res) => {
 app.post("/verificar", async (req, res) => {
   const { email, codigo } = req.body;
   try {
-    const result = await pool.query(
-      "SELECT * FROM usuarios WHERE email=$1 AND codigo_verificacion=$2",
-      [email, codigo]
-    );
+    const result = await pool.query("SELECT * FROM usuarios WHERE email=$1 AND codigo_verificacion=$2", [email, codigo]);
     const user = result.rows[0];
     if (!user) return res.status(400).json({ error: "Código incorrecto" });
 
@@ -219,13 +204,32 @@ app.post("/solicitud/aceptar", async (req, res) => {
       "SELECT * FROM chats WHERE (usuario1_id=$1 AND usuario2_id=$2) OR (usuario1_id=$2 AND usuario2_id=$1)",
       [sol.de_usuario_id, sol.a_usuario_id]
     )).rows[0];
-    if (chat) return res.json({ message: "✅ Solicitud aceptada (chat ya existía)" });
 
-    await pool.query("INSERT INTO chats (usuario1_id, usuario2_id) VALUES ($1,$2)", [sol.de_usuario_id, sol.a_usuario_id]);
-    res.json({ message: "✅ Solicitud aceptada y chat creado" });
+    let chatId;
+    if (!chat) {
+      const nuevoChat = await pool.query(
+        "INSERT INTO chats (usuario1_id, usuario2_id) VALUES ($1,$2) RETURNING id",
+        [sol.de_usuario_id, sol.a_usuario_id]
+      );
+      chatId = nuevoChat.rows[0].id;
+    } else {
+      chatId = chat.id;
+    }
+
+    const chatInfo = await pool.query(
+      `SELECT c.id AS chat_id, u1.nombre AS usuario1, u1.email AS email1,
+              u2.nombre AS usuario2, u2.email AS email2
+       FROM chats c
+       JOIN usuarios u1 ON c.usuario1_id=u1.id
+       JOIN usuarios u2 ON c.usuario2_id=u2.id
+       WHERE c.id=$1`,
+      [chatId]
+    );
+
+    res.json({ message: "✅ Solicitud aceptada y chat listo", chat: chatInfo.rows[0] });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "No se pudo aceptar" });
+    res.status(500).json({ error: "No se pudo aceptar la solicitud" });
   }
 });
 
@@ -246,101 +250,104 @@ app.post("/mensaje", async (req, res) => {
 app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
   const { chatId, deEmail, mensaje } = req.body;
   const archivo = req.file ? `/uploads/${req.file.filename}` : null;
-  if (!mensaje && !archivo) return res.status(400).json({ error: "Mensaje o archivo requerido" });
-
   try {
     const user = (await pool.query("SELECT id FROM usuarios WHERE email=$1", [deEmail])).rows[0];
     if (!user) return res.status(400).json({ error: "Usuario no encontrado" });
 
-    await pool.query(
-      "INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)",
-      [chatId, user.id, mensaje, archivo]
-    );
-    res.json({ message: "✅ Mensaje enviado", archivo });
+    await pool.query("INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)", [chatId, user.id, mensaje, archivo]);
+    res.json({ message: "✅ Mensaje con archivo enviado" });
   } catch (err) {
-    res.status(500).json({ error: "No se pudo enviar mensaje" });
+    res.status(500).json({ error: "Error al enviar archivo" });
   }
 });
 
+app.post("/mensaje/visto", async (req, res) => {
+  const { chatId, deEmail } = req.body;
+  try {
+    const user = (await pool.query("SELECT id FROM usuarios WHERE email=$1", [deEmail])).rows[0];
+    if (!user) return res.status(400).json({ error: "Usuario no encontrado" });
+
+    await pool.query("UPDATE mensajes SET visto=TRUE WHERE chat_id=$1 AND de_usuario_id=$2", [chatId, user.id]);
+    res.json({ message: "Mensajes marcados como vistos" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al marcar vistos" });
+  }
+});
+
+// -------------------- Obtener chats --------------------
+app.get("/chats", async (req, res) => {
+  const email = req.query.email;
+  try {
+    const query = `
+      SELECT c.id,
+             CASE WHEN c.usuario1_email = $1 THEN c.usuario2_nombre ELSE c.usuario1_nombre END AS nombre,
+             CASE WHEN c.usuario1_email = $1 THEN c.usuario2_email ELSE c.usuario1_email END AS email,
+             m.mensaje AS "ultimoMensaje",
+             m.fecha AS "fechaUltimoMensaje",
+             COALESCE(unread.cantidad, 0) AS "cantidadNoLeidos"
+      FROM chats c
+      LEFT JOIN LATERAL (
+          SELECT mensaje, fecha
+          FROM mensajes
+          WHERE chat_id = c.id
+          ORDER BY fecha DESC
+          LIMIT 1
+      ) m ON true
+      LEFT JOIN LATERAL (
+          SELECT COUNT(*) AS cantidad
+          FROM mensajes
+          WHERE chat_id = c.id AND de_email != $1 AND visto = false
+      ) unread ON true
+      WHERE c.usuario1_email = $1 OR c.usuario2_email = $1
+      ORDER BY m.fecha DESC;
+    `;
+    const { rows } = await pool.query(query, [email]);
+    res.json(rows);
+  } catch (err) {
+    console.error("Error al cargar chats:", err);
+    res.status(500).json({ error: "Error al cargar chats" });
+  }
+});
+
+// -------------------- Obtener mensajes de un chat --------------------
 app.get("/mensajes", async (req, res) => {
   const { chatId } = req.query;
   try {
     const rows = (await pool.query(
-      `SELECT m.mensaje, m.archivo, m.fecha, u.nombre, u.email, m.visto 
-       FROM mensajes m 
-       JOIN usuarios u ON m.de_usuario_id=u.id 
-       WHERE chat_id=$1 ORDER BY fecha ASC`,
+      `SELECT m.id, m.mensaje, m.archivo, m.fecha, u.nombre, u.email, m.visto
+       FROM mensajes m
+       JOIN usuarios u ON m.de_usuario_id=u.id
+       WHERE m.chat_id=$1 ORDER BY m.fecha ASC`,
       [chatId]
     )).rows;
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Error DB" });
+    res.status(500).json({ error: "Error al cargar mensajes" });
   }
-});
-// Obtener todos los chats de un usuario con cantidad de mensajes no leídos y último mensaje
-app.get("/chats", (req, res) => {
-  const email = req.query.email;
-
-  db.get("SELECT id FROM usuarios WHERE email=?", [email], (err, user) => {
-    if (err || !user) return res.status(400).json({ error: "Usuario no encontrado" });
-
-    db.all(
-      `SELECT c.id,
-              CASE WHEN c.usuario1_id = ? THEN u2.nombre ELSE u1.nombre END AS nombre,
-              CASE WHEN c.usuario1_id = ? THEN u2.email ELSE u1.email END AS otroEmail,
-              m.mensaje AS ultimoMensaje,
-              m.fecha AS fechaUltimoMensaje,
-              u.email AS ultimoMensajeDe,
-              m.visto AS ultimoVisto,
-              (SELECT COUNT(*) FROM mensajes m2 
-               WHERE m2.chat_id = c.id 
-                 AND m2.de_usuario_id != ? 
-                 AND m2.visto = 0) AS cantidadNoLeidos
-       FROM chats c
-       LEFT JOIN usuarios u1 ON c.usuario1_id = u1.id
-       LEFT JOIN usuarios u2 ON c.usuario2_id = u2.id
-       LEFT JOIN mensajes m ON m.id = (
-           SELECT id FROM mensajes 
-           WHERE chat_id = c.id 
-           ORDER BY fecha DESC 
-           LIMIT 1
-       )
-       LEFT JOIN usuarios u ON m.de_usuario_id = u.id
-       WHERE c.usuario1_id = ? OR c.usuario2_id = ?`,
-      [user.id, user.id, user.id, user.id, user.id],
-      (err, rows) => {
-        if (err) return res.status(500).json({ error: "Error al traer chats" });
-        res.json(rows);
-      }
-    );
-  });
 });
 
 // -------------------- Login --------------------
 app.post("/login", async (req, res) => {
   const { email, contraseña } = req.body;
   try {
-    const row = (await pool.query("SELECT * FROM usuarios WHERE email=$1", [email])).rows[0];
-    if (!row) return res.status(400).json({ error: "Usuario no registrado" });
+    const user = (await pool.query("SELECT * FROM usuarios WHERE email=$1", [email])).rows[0];
+    if (!user) return res.status(400).json({ error: "Usuario no encontrado" });
 
-    const valid = bcrypt.compareSync(contraseña, row.contraseña);
-    if (!valid) return res.status(400).json({ error: "Contraseña incorrecta" });
+    if (!bcrypt.compareSync(contraseña, user.contraseña)) return res.status(400).json({ error: "Contraseña incorrecta" });
 
-    res.json({ message: "✅ Login exitoso", verificado: row.verificado, nombre: row.nombre });
+    res.json({ message: "✅ Login correcto", email: user.email, nombre: user.nombre, verificado: user.verificado });
   } catch (err) {
-    res.status(500).json({ error: "Error en la base de datos" });
+    res.status(500).json({ error: "Error login" });
   }
 });
 
 // -------------------- Datos del usuario --------------------
 app.get("/usuario", async (req, res) => {
   const email = req.query.email;
-  if (!email) return res.status(400).json({ error: "Email es requerido" });
-
   try {
     const row = (await pool.query("SELECT * FROM usuarios WHERE email=$1", [email])).rows[0];
     if (!row) return res.status(404).json({ error: "Usuario no encontrado" });
-
     res.json({ nombre: row.nombre, email: row.email, verificado: row.verificado });
   } catch (err) {
     res.status(500).json({ error: "Error en la base de datos" });
@@ -348,6 +355,4 @@ app.get("/usuario", async (req, res) => {
 });
 
 // -------------------- Servidor --------------------
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
