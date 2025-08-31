@@ -7,63 +7,65 @@
 <script src="https://unpkg.com/feather-icons"></script>
 <style>
   body { font-family: 'Segoe UI', sans-serif; }
-  .bubble { display: inline-block; padding: 6px 10px; border-radius: 16px; max-width: 70%; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; transition: all 0.2s ease-in-out; }
+  .bubble { display: inline-block; padding: 8px 12px; border-radius: 16px; max-width: 45%; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; transition: all 0.2s ease-in-out; }
   .bubble-left { background-color: #f3f4f6; color: #111827; align-self: flex-start; }
   .bubble-right { background-color: #3b82f6; color: white; align-self: flex-end; }
-  .chat-header { font-weight: bold; padding: 12px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 8px; background-color: #2563eb; color: white; font-size: 1rem; position: sticky; top: 0; z-index: 10; }
+  .chat-header { font-weight: bold; padding: 12px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 8px; background-color: #2563eb; color: white; font-size: 1rem; }
   .chat-img { cursor: pointer; max-width: 180px; max-height: 180px; border-radius: 12px; transition: transform 0.2s ease; }
   .chat-img:hover { transform: scale(1.05); }
   .overlay { position: fixed; display: none; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 50; }
   .overlay img { max-width: 90%; max-height: 90%; border-radius: 12px; }
-  .msg-input { display: flex; gap: 6px; padding: 6px; border-top: 1px solid #ddd; background: #f9fafb; align-items: center; position: sticky; bottom: 0; }
-  .msg-input input[type="text"] { flex: 1; padding: 6px 10px; border-radius: 999px; border: 1px solid #d1d5db; outline: none; font-size: 0.95rem; }
-  .msg-input button { background: #3b82f6; color: white; padding: 6px 10px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+  .msg-input { display: flex; gap: 8px; padding: 8px; border-top: 1px solid #ddd; background: #f9fafb; align-items: center; }
+  .msg-input input[type="text"] { flex: 1; padding: 8px 12px; border-radius: 999px; border: 1px solid #d1d5db; outline: none; }
+  .msg-input button { background: #3b82f6; color: white; padding: 8px 12px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
   .msg-input button:hover { background: #2563eb; }
-  .user-icon { width: 30px; height: 30px; border-radius: 50%; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; font-size: 0.9rem; }
-  .chat-list-item { cursor: pointer; padding: 6px; border-radius: 8px; display: flex; align-items: center; gap: 6px; position: relative; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-icon { width: 30px; height: 30px; border-radius: 50%; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
+  .chat-list-item { cursor: pointer; padding: 8px; border-radius: 8px; display: flex; align-items: center; gap: 8px; position: relative; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-list-item:hover { background-color: #e5e7eb; }
-  .unread-dot { width: 14px; height: 14px; background: red; border-radius: 50%; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; color: white; }
+  .unread-dot { width: 10px; height: 10px; background: red; border-radius: 50%; }
   .scrollbar { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #888 #f3f4f6; }
   .scrollbar::-webkit-scrollbar { width: 6px; }
   .scrollbar::-webkit-scrollbar-thumb { background-color: #888; border-radius: 3px; }
 </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-start p-2">
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
 
-<div class="container bg-white p-6 rounded-xl shadow-md w-full max-w-md mb-2">
-  <h2 class="text-xl sm:text-2xl font-bold mb-3">Bienvenido, <span id="nombreUsuario"></span></h2>
-  <div id="verificar-section" class="mb-3">
-    <h3 class="text-md sm:text-lg font-semibold mb-2">Verificar tu cuenta</h3>
+<div class="container bg-white p-8 rounded-xl shadow-md w-full max-w-md mb-4">
+  <h2 class="text-2xl font-bold mb-4">Bienvenido, <span id="nombreUsuario"></span></h2>
+  <div id="verificar-section" class="mb-4">
+    <h3 class="text-lg font-semibold mb-2">Verificar tu cuenta</h3>
     <form id="verificarForm" class="space-y-2">
-      <input type="text" name="codigo" placeholder="Código de verificación" required class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm">
-      <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition text-sm">Verificar</button>
+      <input type="text" name="codigo" placeholder="Código de verificación" required class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition">Verificar</button>
     </form>
-    <div id="msg" class="hidden mt-2 p-2 rounded text-sm"></div>
+    <div id="msg" class="hidden mt-2 p-2 rounded"></div>
   </div>
-  <button id="cerrarSesion" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition text-sm">Cerrar sesión</button>
+  <button id="cerrarSesion" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition">Cerrar sesión</button>
 </div>
 
-<div id="panel-chat" class="hidden mt-2 flex flex-col md:flex-row w-full max-w-6xl h-[500px] md:h-[600px] border rounded shadow-md overflow-hidden">
-  <div class="w-full md:w-1/3 border-r p-2 flex flex-col gap-3 md:gap-4 h-80 md:h-full">
+<div id="panel-chat" class="hidden mt-4 flex w-full max-w-6xl h-[600px] border rounded shadow-md overflow-hidden">
+  <div class="w-1/3 border-r p-2 flex flex-col gap-4">
     <div>
-      <h3 class="font-semibold mb-1 text-sm md:text-base">Enviar solicitud</h3>
-      <input id="correoSolicitud" type="email" placeholder="Correo del usuario" class="w-full p-2 border rounded mb-1 text-sm" />
-      <button id="enviarSolicitudBtn" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition flex items-center gap-2 text-sm">
+      <h3 class="font-semibold mb-2">Enviar solicitud</h3>
+      <input id="correoSolicitud" type="email" placeholder="Correo del usuario" class="w-full p-2 border rounded mb-2" />
+      <button id="enviarSolicitudBtn" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition flex items-center gap-2">
         <i data-feather="send"></i> Enviar
       </button>
-      <div id="msgSolicitud" class="mt-1 text-sm"></div>
+      <div id="msgSolicitud" class="mt-2"></div>
     </div>
 
-    <h3 class="font-semibold mb-1 mt-2 text-sm md:text-base">Solicitudes</h3>
-    <div id="solicitudes" class="flex flex-col gap-1 md:gap-2 scrollbar max-h-32 md:max-h-40"></div>
+    <h3 class="font-semibold mb-2">Solicitudes</h3>
+    <div id="solicitudes" class="flex flex-col gap-2 scrollbar max-h-40"></div>
 
-    <h3 class="font-semibold mt-2 mb-1 text-sm md:text-base">Chats</h3>
-    <div id="chats" class="flex flex-col gap-1 md:gap-2 scrollbar flex-1"></div>
+    <h3 class="font-semibold mt-4 mb-2">Chats</h3>
+    <div id="chats" class="flex flex-col gap-2 scrollbar flex-1">
+      <div id="loaderChats" class="text-gray-500 text-center mt-4">Cargando chats...</div>
+    </div>
   </div>
 
-  <div class="w-full md:w-2/3 flex flex-col h-80 md:h-full">
-    <div id="chatHeader" class="chat-header text-sm md:text-base">Selecciona un chat</div>
-    <div id="mensajes" class="flex-1 overflow-y-auto p-2 flex flex-col gap-1 md:gap-2 scrollbar"></div>
+  <div class="w-2/3 flex flex-col">
+    <div id="chatHeader" class="chat-header">Selecciona un chat</div>
+    <div id="mensajes" class="flex-1 overflow-y-auto p-2 flex flex-col gap-2 scrollbar"></div>
 
     <div class="msg-input">
       <button id="btnArchivo"><i data-feather="paperclip"></i></button>
@@ -77,6 +79,7 @@
 <div id="overlay" class="overlay flex" onclick="this.style.display='none'">
   <img id="overlayImg" src="" />
 </div>
+
 <script>
 feather.replace();
 const API = "https://catchat12.onrender.com";
