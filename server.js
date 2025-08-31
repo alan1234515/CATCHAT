@@ -8,19 +8,18 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // Puerto dinámico para Render
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname)));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"))); // carpeta pública
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // -------------------- PostgreSQL --------------------
 const pool = new Pool({
-  connectionString: "postgresql://admin:uJGqPEmGBKlZ1eXXQl8GNCMIPLHHjYJs@dpg-d2pss9er433s73dl9qgg-a/mensajes12313411",
+  connectionString: process.env.DATABASE_URL || "postgresql://admin:uJGqPEmGBKlZ1eXXQl8GNCMIPLHHjYJs@dpg-d2pss9er433s73dl9qgg-a/mensajes12313411",
   ssl: { rejectUnauthorized: false }
 });
 
@@ -74,8 +73,8 @@ crearTablas().catch(console.error);
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "alanlajones24@gmail.com",
-    pass: "zmbrgtugxnwxtcma"
+    user: process.env.EMAIL_USER || "alanlajones24@gmail.com",
+    pass: process.env.EMAIL_PASS || "zmbrgtugxnwxtcma"
   }
 });
 
@@ -111,7 +110,7 @@ app.post("/registrar", async (req, res) => {
     );
 
     const mailOptions = {
-      from: "alanlajones24@gmail.com",
+      from: process.env.EMAIL_USER || "alanlajones24@gmail.com",
       to: email,
       subject: "Verifica tu cuenta",
       text: `Hola ${nombre}, tu código de verificación es: ${codigo}`,
@@ -227,7 +226,6 @@ app.post("/solicitud/aceptar", async (req, res) => {
 });
 
 // -------------------- Chats y mensajes --------------------
-// Enviar mensaje
 app.post("/mensaje", async (req, res) => {
   const { chatId, deEmail, mensaje } = req.body;
   try {
@@ -242,7 +240,6 @@ app.post("/mensaje", async (req, res) => {
   }
 });
 
-// Enviar mensaje con archivo
 app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
   const { chatId, deEmail, mensaje } = req.body;
   const archivo = req.file ? `/uploads/${req.file.filename}` : null;
@@ -258,7 +255,6 @@ app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
   }
 });
 
-// Obtener mensajes de un chat
 app.get("/mensajes", async (req, res) => {
   const { chatId } = req.query;
   try {
@@ -276,7 +272,6 @@ app.get("/mensajes", async (req, res) => {
   }
 });
 
-// Marcar mensajes como vistos
 app.post("/mensaje/visto", async (req, res) => {
   const { chatId, deEmail } = req.body;
   try {
@@ -291,7 +286,6 @@ app.post("/mensaje/visto", async (req, res) => {
   }
 });
 
-// Limpiar chats duplicados
 app.get("/limpiarChatsDuplicados", async (req, res) => {
   try {
     await pool.query(`
@@ -311,5 +305,5 @@ app.get("/limpiarChatsDuplicados", async (req, res) => {
 
 // -------------------- Servidor --------------------
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Servidor corriendo en Render en el puerto ${PORT}`);
 });
