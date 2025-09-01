@@ -25,19 +25,24 @@
   .unread-dot { width: 10px; height: 10px; background: red; border-radius: 50%; }
   .scrollbar { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #888 #f3f4f6; }
   .scrollbar::-webkit-scrollbar { width: 6px; }
-  .scrollbar::-webkit-scrollbar-thumb { background-color: #888; border-radius: 3px; }
-  #mensajes { flex:1 1 0; min-height:0; overflow-y:auto; }
-  @media (max-width:768px){
-    #panel-chat { flex-direction: column; height: calc(100vh - 150px); }
-    #panel-chat > div { width:100% !important; }
-    #lista-chats { max-height:40%; overflow-y:auto; }
-    #mensajes { max-height:60%; }
-    .bubble { max-width:90%; }
-    .chat-img { max-width:120px; max-height:120px; }
-    .msg-input { flex-wrap:wrap; gap:4px; }
-    .msg-input input[type="text"]{ flex:1 1 100%; }
-    .msg-input button{ flex:1 1 auto; padding:6px 8px; }
-  }
+  .scrollbar::-webkit-scrollbar-thumb { background-color: #888; }
+
+  /* Contenedor mensajes */
+#mensajes { flex:1 1 0; min-height:0; overflow-y:auto; }
+
+/* Media queries para móvil */
+@media (max-width:768px){
+  #panel-chat { flex-direction: column; height: calc(100vh - 150px); }
+  #panel-chat > div { width:100% !important; }
+  #lista-chats { max-height:40%; overflow-y:auto; }
+  #mensajes { max-height:60%; }
+  .bubble { max-width:90%; }
+  .chat-img { max-width:120px; max-height:120px; }
+  .msg-input { flex-wrap:wrap; gap:4px; }
+  .msg-input input[type="text"]{ flex:1 1 100%; }
+  .msg-input button{ flex:1 1 auto; padding:6px 8px; }
+}
+
 </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
@@ -91,8 +96,8 @@
 <div id="overlay" class="overlay flex" onclick="this.style.display='none'">
   <img id="overlayImg" src="" />
 </div>
-
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+
 <script>
 feather.replace();
 const API = "https://catchat12.onrender.com";
@@ -104,7 +109,6 @@ const msg=document.getElementById("msg");
 const cerrar=document.getElementById("cerrarSesion");
 const chatHeader=document.getElementById("chatHeader");
 let chatActivoId=null;
-let socket=null;
 
 if(!email) window.location.href="login.html";
 
@@ -140,27 +144,17 @@ cerrar.addEventListener("click", ()=>{ localStorage.removeItem("usuarioEmail"); 
 
 async function cargarPanel(){
   document.getElementById("panel-chat").classList.remove("hidden");
-
-  // Inicializar socket
-  socket = io(API);
-  socket.on("connect", () => console.log("Conectado al servidor Socket.IO"));
-  socket.emit("unirmeChat", { email });
-
-  // Escuchar mensajes entrantes en tiempo real
-  socket.on("nuevoMensaje", m => {
-    if(m.chatId === chatActivoId){
-      mostrarMensaje(m);
-    } else {
-      // Opcional: actualizar indicador de no leídos
-      cargarChats();
-    }
-  });
-
   await cargarSolicitudes();
   await cargarChats();
+  async function actualizarMensajes(){
+    if(chatActivoId){
+        await cargarMensajes(chatActivoId); // refresca solo chat activo
+    }
+    setTimeout(actualizarMensajes, 3000); // cada 3 seg
+  }
+  actualizarMensajes();
 }
 
-// Funciones existentes de solicitudes y chats
 async function cargarSolicitudes(){
   try{
     const res=await fetch(`${API}/solicitudes?email=${email}`);
@@ -226,78 +220,97 @@ async function cargarChats() {
         div.appendChild(punto);
       }
 
+      // Al hacer clic en un chat
       div.addEventListener("click", () => { 
         chatActivoId = c.id; 
         chatHeader.textContent = c.nombre; 
-        document.getElementById("mensajes").innerHTML = "";
-        cargarMensajes(chatActivoId); // cargar mensajes históricos
+        cargarMensajes(chatActivoId, true); // cargar mensajes y marcar vistos
       });
 
       container.appendChild(div);
     }
   }catch(err){
     console.error("Error al cargar chats:", err);
+    const container = document.getElementById("chats");
+    container.innerHTML = "<div class='text-red-600 text-center mt-4'>Error al cargar chats</div>";
   }finally{
     loader.style.display="none";
   }
 }
 
-// Mostrar mensaje en pantalla
-function mostrarMensaje(m){
-  const container = document.getElementById("mensajes");
-  const div = document.createElement("div");
-  div.className = m.email === email ? "bubble bubble-right" : "bubble bubble-left";
+let ultimoMensajeId = 0;
+async function cargarMensajes(chatId, forzarScroll=false){
+    const container = document.getElementById("mensajes");
+    container.innerHTML = ""; 
+    ultimoMensajeId = 0;
 
-  let horaMensaje = "";
-  if(m.fecha){
-      const fechaUTC = new Date(m.fecha);
-      const fechaEcuador = new Date(fechaUTC.getTime() - 5*60*60*1000);
-      horaMensaje = `<span style="font-size:0.7rem; color:#666; margin-left:4px;">
-                      ${fechaEcuador.getHours().toString().padStart(2,'0')}:${fechaEcuador.getMinutes().toString().padStart(2,'0')}
-                     </span>`;
-  }
+    try{
+        const res = await fetch(`${API}/mensajes?chatId=${chatId}`);
+        const mensajes = await res.json();
 
-  if(m.archivo && m.archivo.match(/\.(jpg|jpeg|png|gif)$/i)){
-      div.innerHTML = `<strong>${m.nombre}:</strong><br>
-                       <img src="${m.archivo}" class="chat-img" 
-                       onclick="document.getElementById('overlayImg').src='${m.archivo}';
-                                document.getElementById('overlay').style.display='flex';">
-                       ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
-  } else if(m.archivo){
-      div.innerHTML = `<strong>${m.nombre}:</strong> 
-                       <a href="${m.archivo}" target="_blank" class="text-blue-600 underline">📎 Ver archivo</a>
-                       ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
-  } else{
-      div.innerHTML = `<strong>${m.nombre}:</strong> ${m.mensaje||""}${horaMensaje}`;
-  }
+        mensajes.forEach(m => {
+            const div = document.createElement("div");
+            div.className = m.email === email ? "bubble bubble-right" : "bubble bubble-left";
 
-  if(m.email === email){
-      const tick = document.createElement("span");
-      tick.style.marginLeft = "6px";
-      tick.style.fontSize = "0.8rem";
-      tick.textContent = m.visto ? "✔✔" : "✔";
-      div.appendChild(tick);
-  }
+            let horaMensaje = "";
+            if(m.fecha){
+                const fechaUTC = new Date(m.fecha);
+                const fechaEcuador = new Date(fechaUTC.getTime() - 5*60*60*1000);
+                horaMensaje = `<span style="font-size:0.7rem; color:#666; margin-left:4px;">
+                                ${fechaEcuador.getHours().toString().padStart(2,'0')}:${fechaEcuador.getMinutes().toString().padStart(2,'0')}
+                               </span>`;
+            }
 
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+            if(m.archivo && m.archivo.match(/\.(jpg|jpeg|png|gif)$/i)){
+                div.innerHTML = `<strong>${m.nombre}:</strong><br>
+                                 <img src="${m.archivo}" class="chat-img" 
+                                 onclick="document.getElementById('overlayImg').src='${m.archivo}';
+                                          document.getElementById('overlay').style.display='flex';">
+                                 ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
+            } else if(m.archivo){
+                div.innerHTML = `<strong>${m.nombre}:</strong> 
+                                 <a href="${m.archivo}" target="_blank" class="text-blue-600 underline">📎 Ver archivo</a>
+                                 ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
+            } else{
+                div.innerHTML = `<strong>${m.nombre}:</strong> ${m.mensaje||""}${horaMensaje}`;
+            }
+
+            if(m.email === email){
+                const tick = document.createElement("span");
+                tick.style.marginLeft = "6px";
+                tick.style.fontSize = "0.8rem";
+                tick.textContent = m.visto ? "✔✔" : "✔";
+                div.appendChild(tick);
+            }
+
+            container.appendChild(div);
+            ultimoMensajeId = Math.max(ultimoMensajeId, m.id);
+        });
+
+        if(forzarScroll) container.scrollTop = container.scrollHeight;
+
+        // Marcar como vistos
+        await fetch(`${API}/mensaje/visto`, {
+            method: "POST",
+            headers: { "Content-Type":"application/json" },
+            body: JSON.stringify({ chatId, deEmail: email })
+        });
+
+        cargarChats(); // actualizar indicadores de no leídos
+    }catch(err){ console.error("Error al cargar mensajes:", err); }
 }
 
-// Cargar mensajes históricos
-async function cargarMensajes(chatId){
-  try{
-    const res = await fetch(`${API}/mensajes?chatId=${chatId}`);
-    const mensajes = await res.json();
-    mensajes.forEach(m => mostrarMensaje(m));
-  }catch(err){ console.error("Error al cargar mensajes:", err); }
-}
-
-// Enviar mensaje con Socket.IO
-document.getElementById("enviarMensaje").addEventListener("click", ()=>{
+// Enviar mensaje
+document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
   const texto = document.getElementById("nuevoMensaje").value.trim();
   const archivoInput = document.getElementById("archivoMensaje");
+  const btn = document.getElementById("enviarMensaje");
+
   if(!texto && !archivoInput.files.length) return;
   if(!chatActivoId) return;
+
+  btn.disabled = true;
+  btn.classList.add("opacity-50", "cursor-not-allowed");
 
   const formData = new FormData();
   formData.append("chatId", chatActivoId);
@@ -305,46 +318,44 @@ document.getElementById("enviarMensaje").addEventListener("click", ()=>{
   formData.append("mensaje", texto);
   if(archivoInput.files.length) formData.append("archivo", archivoInput.files[0]);
 
-  fetch(`${API}/mensajeArchivo`, { method:"POST", body: formData })
-    .then(res => res.json())
-    .then(data => {
-      document.getElementById("nuevoMensaje").value = "";
-      archivoInput.value = "";
-      // Emitir mensaje al socket para que otros usuarios lo vean
-      socket.emit("mensajeEnviado", { chatId: chatActivoId });
-    }).catch(err => console.error("Error al enviar mensaje:", err));
-});
-
-// Enter para enviar
-document.getElementById("nuevoMensaje").addEventListener("keydown", e=>{
-  if(e.key==="Enter" && !e.shiftKey){
-    e.preventDefault();
-    document.getElementById("enviarMensaje").click();
+  try {
+    await fetch(`${API}/mensajeArchivo`, { method: "POST", body: formData });
+    document.getElementById("nuevoMensaje").value = "";
+    archivoInput.value = "";
+    cargarMensajes(chatActivoId, true);
+  } catch(err){
+    console.error("Error al enviar mensaje:", err);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
   }
 });
 
-// Archivo
-document.getElementById("archivoMensaje").addEventListener("change", ()=>{
-  const archivo = document.getElementById("archivoMensaje").files[0];
-  document.getElementById("nuevoMensaje").value = archivo ? `Archivo: ${archivo.name}` : "";
+// Subir archivo
+document.getElementById("btnArchivo").addEventListener("click", ()=>{
+  document.getElementById("archivoMensaje").click();
 });
-document.getElementById("btnArchivo").addEventListener("click",()=>{document.getElementById("archivoMensaje").click();});
+
+document.getElementById("archivoMensaje").addEventListener("change", e=>{
+  const fileName = e.target.files[0]?.name;
+  if(fileName) alert(`Archivo listo para enviar: ${fileName}`);
+});
 
 // Enviar solicitud
 document.getElementById("enviarSolicitudBtn").addEventListener("click", async ()=>{
-  const correoDestino=document.getElementById("correoSolicitud").value.trim();
-  const msgDiv=document.getElementById("msgSolicitud");
-  if(!correoDestino){ msgDiv.textContent="Ingresa un correo válido"; msgDiv.className="text-red-600"; return; }
+  const correo=document.getElementById("correoSolicitud").value.trim();
+  if(!correo) return;
   try{
-    const res=await fetch(`${API}/solicitud`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deEmail:email,aEmail:correoDestino})});
+    const res=await fetch(`${API}/solicitud/enviar`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,correo})});
     const data=await res.json();
-    msgDiv.textContent=data.message||data.error;
-    msgDiv.className=data.message?"text-green-600":"text-red-600";
-    if(data.message){ document.getElementById("correoSolicitud").value=""; cargarSolicitudes(); }
-  }catch(err){ console.error("Error al enviar solicitud:", err); msgDiv.textContent="Error de conexión"; msgDiv.className="text-red-600"; }
+    document.getElementById("msgSolicitud").textContent=data.message||data.error;
+    document.getElementById("msgSolicitud").className="mt-2 p-2 rounded "+(data.message?"bg-green-200 text-green-800":"bg-red-200 text-red-800");
+    cargarSolicitudes();
+  }catch(err){ console.error("Error al enviar solicitud:", err); }
 });
 
 obtenerUsuario();
+
 </script>
 </body>
 </html>
