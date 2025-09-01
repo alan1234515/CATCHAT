@@ -10,7 +10,6 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = process.env.PORT || 1000;
 
-const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const server = http.createServer(app);
