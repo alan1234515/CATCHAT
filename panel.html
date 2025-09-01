@@ -206,6 +206,7 @@ async function cargarChats() {
                          <span>${c.nombre}${horaUltimo}</span>
                          <span class="text-gray-500 text-sm">${ultimo}</span>
                        </div>`;
+
       const cantidadNoLeidos = c.cantidadNoLeidos || 0;
       if (cantidadNoLeidos > 0 && chatActivoId !== c.id) {
         const punto = document.createElement("span");
@@ -217,13 +218,17 @@ async function cargarChats() {
         punto.textContent = cantidadNoLeidos;
         div.appendChild(punto);
       }
-      div.onclick = () => { 
-    chatActivoId = c.id; 
-    chatHeader.textContent = c.nombre; 
-    ultimoMensajeId = 0;  // <-- reiniciar contador de mensajes
-    cargarMensajes(chatActivoId, true); // forzar scroll y actualización
-};
 
+      // Al hacer clic en un chat
+      div.addEventListener("click", () => { 
+        chatActivoId = c.id; 
+        chatHeader.textContent = c.nombre; 
+        ultimoMensajeId = 0;  // reinicia contador de mensajes
+        cargarMensajes(chatActivoId, true); // cargar mensajes y hacer scroll
+      });
+
+      // **Agregamos el div al contenedor**
+      container.appendChild(div);
     }
   }catch(err){
     console.error("Error al cargar chats:", err);
@@ -233,6 +238,7 @@ async function cargarChats() {
     loader.style.display="none";
   }
 }
+
 let ultimoMensajeId = 0;
 async function cargarMensajes(chatId, forzarScroll=false){
     const container = document.getElementById("mensajes");
