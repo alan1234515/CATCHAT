@@ -247,8 +247,11 @@ async function cargarMensajes(chatId, forzarScroll=false){
 
         if(mensajes.length === 0) return; // nada nuevo
 
-        // Si el usuario estaba abajo, se mantendrá scroll al final
+        // Determinar si el scroll estaba abajo
         const scrollAbajo = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+
+        // Limpiar solo si es un cambio de chat
+        if(forzarScroll) container.innerHTML = "";
 
         mensajes.forEach(m => {
             const div = document.createElement("div");
@@ -289,16 +292,19 @@ async function cargarMensajes(chatId, forzarScroll=false){
             ultimoMensajeId = Math.max(ultimoMensajeId, m.id);
         });
 
+        // Siempre scroll al último mensaje si es cambio de chat o estaba abajo
         if(forzarScroll || scrollAbajo){
             container.scrollTop = container.scrollHeight;
         }
 
-        // Marcar mensajes como vistos
-        await fetch(`${API}/mensaje/visto`, {
-            method: "POST",
-            headers: { "Content-Type":"application/json" },
-            body: JSON.stringify({ chatId, deEmail: email })
-        });
+        // Marcar mensajes como vistos SOLO si el chat está activo
+        if(forzarScroll){ 
+            await fetch(`${API}/mensaje/visto`, {
+                method: "POST",
+                headers: { "Content-Type":"application/json" },
+                body: JSON.stringify({ chatId, deEmail: email })
+            });
+        }
 
         // Actualizar indicadores de chats sin borrar scroll
         cargarChats();
