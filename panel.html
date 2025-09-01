@@ -25,34 +25,23 @@
   .unread-dot { width: 10px; height: 10px; background: red; border-radius: 50%; }
   .scrollbar { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #888 #f3f4f6; }
   .scrollbar::-webkit-scrollbar { width: 6px; }
-  .scrollbar::-webkit-scrollbar-thumb { background-color: #888; }
+  .scrollbar::-webkit-scrollbar-thumb { background-color: #888; border-radius: 3px; }
 
-  #mensajes {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+  /* Contenedor mensajes */
+#mensajes { flex:1 1 0; min-height:0; overflow-y:auto; }
 
-  #panel-chat > div {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  @media (max-width:768px){
-    #panel-chat { flex-direction: column; height: calc(100vh - 150px); }
-    #panel-chat > div { width:100% !important; min-height: 0; }
-    #lista-chats { max-height:40%; overflow-y:auto; }
-    #mensajes { flex: 1 1 auto; min-height: 0; }
-    .bubble { max-width:90%; }
-    .chat-img { max-width:120px; max-height:120px; }
-    .msg-input { flex-wrap:wrap; gap:4px; }
-    .msg-input input[type="text"]{ flex:1 1 100%; }
-    .msg-input button{ flex:1 1 auto; padding:6px 8px; }
-  }
+/* Media queries para móvil */
+@media (max-width:768px){
+  #panel-chat { flex-direction: column; height: calc(100vh - 150px); }
+  #panel-chat > div { width:100% !important; }
+  #lista-chats { max-height:40%; overflow-y:auto; }
+  #mensajes { max-height:60%; }
+  .bubble { max-width:90%; }
+  .chat-img { max-width:120px; max-height:120px; }
+  .msg-input { flex-wrap:wrap; gap:4px; }
+  .msg-input input[type="text"]{ flex:1 1 100%; }
+  .msg-input button{ flex:1 1 auto; padding:6px 8px; }
+}
 
 </style>
 </head>
@@ -119,8 +108,6 @@ const msg=document.getElementById("msg");
 const cerrar=document.getElementById("cerrarSesion");
 const chatHeader=document.getElementById("chatHeader");
 let chatActivoId=null;
-let lastMessageIds = {}; // para guardar el último mensaje por chat
-let enviandoMensaje = false;
 
 if(!email) window.location.href="login.html";
 
@@ -158,13 +145,15 @@ async function cargarPanel(){
   document.getElementById("panel-chat").classList.remove("hidden");
   await cargarSolicitudes();
   await cargarChats();
-  setInterval(async ()=>{
+  async function actualizarMensajes(){
     if(chatActivoId) await cargarMensajes(chatActivoId);
     await cargarChats();
-  },5000);
+    setTimeout(actualizarMensajes, 5000); // llama recursivamente
+}
+actualizarMensajes();
+
 }
 
-// === Solicitudes ===
 async function cargarSolicitudes(){
   try{
     const res=await fetch(`${API}/solicitudes?email=${email}`);
@@ -188,7 +177,6 @@ async function cargarSolicitudes(){
   }catch(err){ console.error("Error al cargar solicitudes:", err); }
 }
 
-// === Chats ===
 async function cargarChats() {
   const loader = document.getElementById("loaderChats");
   loader.style.display = "block";
@@ -240,110 +228,104 @@ async function cargarChats() {
     loader.style.display="none";
   }
 }
-
-// === Mensajes ===
+let ultimoMensajeId = 0;
 async function cargarMensajes(chatId, forzarScroll=false){
-  const container = document.getElementById("mensajes");
-  const estabaAlFinal = container.scrollHeight - container.scrollTop <= container.clientHeight + 5;
-  try{
-    const res = await fetch(`${API}/mensajes?chatId=${chatId}`);
-    const mensajes = await res.json();
+    const container = document.getElementById("mensajes");
+    const estabaAlFinal = container.scrollHeight - container.scrollTop <= container.clientHeight + 5;
 
-    // filtrar solo nuevos mensajes
-    let lastId = lastMessageIds[chatId] || 0;
-    const nuevosMensajes = mensajes.filter(m => m.id > lastId);
+    try{
+        const res = await fetch(`${API}/mensajes?chatId=${chatId}&desdeId=${ultimoMensajeId}`);
+        const mensajes = await res.json();
 
-    if(nuevosMensajes.length===0) return; // nada nuevo
-    lastMessageIds[chatId] = nuevosMensajes[nuevosMensajes.length-1].id;
+        mensajes.forEach(m => {
+            const div = document.createElement("div");
+            div.className = m.email === email ? "bubble bubble-right" : "bubble bubble-left";
 
-    nuevosMensajes.forEach(m=>{
-      const div = document.createElement("div");
-      div.className = m.email === email ? "bubble bubble-right" : "bubble bubble-left";
-      let horaMensaje = "";
-      if(m.fecha){
-        const fechaUTC = new Date(m.fecha);
-        const fechaEcuador = new Date(fechaUTC.getTime() - 5*60*60*1000);
-        horaMensaje = `<span style="font-size:0.7rem; color:#666; margin-left:4px;">
-                        ${fechaEcuador.getHours().toString().padStart(2,'0')}:${fechaEcuador.getMinutes().toString().padStart(2,'0')}
-                       </span>`;
-      }
-      if(m.archivo && m.archivo.match(/\.(jpg|jpeg|png|gif)$/i)){
-        div.innerHTML = `<strong>${m.nombre}:</strong><br>
-                         <img src="${m.archivo}" class="chat-img" 
-                         onclick="document.getElementById('overlayImg').src='${m.archivo}';
-                                  document.getElementById('overlay').style.display='flex';">
-                         ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
-      } else if(m.archivo){
-        div.innerHTML = `<strong>${m.nombre}:</strong> 
-                         <a href="${m.archivo}" target="_blank" class="text-blue-600 underline">📎 Ver archivo</a>
-                         ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
-      } else{
-        div.innerHTML = `<strong>${m.nombre}:</strong> ${m.mensaje||""}${horaMensaje}`;
-      }
-      if(m.email === email){
-        const tick = document.createElement("span");
-        tick.style.marginLeft = "6px";
-        tick.style.fontSize = "0.8rem";
-        tick.textContent = m.visto ? "✔✔" : "✔";
-        div.appendChild(tick);
-      }
-      container.appendChild(div);
-    });
+            let horaMensaje = "";
+            if(m.fecha){
+                const fechaUTC = new Date(m.fecha);
+                const fechaEcuador = new Date(fechaUTC.getTime() - 5*60*60*1000);
+                horaMensaje = `<span style="font-size:0.7rem; color:#666; margin-left:4px;">
+                                ${fechaEcuador.getHours().toString().padStart(2,'0')}:${fechaEcuador.getMinutes().toString().padStart(2,'0')}
+                               </span>`;
+            }
 
-    // scroll
-    if(estabaAlFinal || forzarScroll){
-      const imgs = container.querySelectorAll("img");
-      imgs.forEach(img => img.onload = () => { container.scrollTop = container.scrollHeight; });
-      container.scrollTop = container.scrollHeight;
-    }
+            if(m.archivo && m.archivo.match(/\.(jpg|jpeg|png|gif)$/i)){
+                div.innerHTML = `<strong>${m.nombre}:</strong><br>
+                                 <img src="${m.archivo}" class="chat-img" 
+                                 onclick="document.getElementById('overlayImg').src='${m.archivo}';
+                                          document.getElementById('overlay').style.display='flex';">
+                                 ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
+            } else if(m.archivo){
+                div.innerHTML = `<strong>${m.nombre}:</strong> 
+                                 <a href="${m.archivo}" target="_blank" class="text-blue-600 underline">📎 Ver archivo</a>
+                                 ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
+            } else{
+                div.innerHTML = `<strong>${m.nombre}:</strong> ${m.mensaje||""}${horaMensaje}`;
+            }
 
-    // marcar como visto
-    if(chatActivoId === chatId){
-      const mensajesNoVistos = nuevosMensajes.filter(m => m.email !== email && !m.visto);
-      if(mensajesNoVistos.length){
-        await fetch(`${API}/mensaje/visto`, {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ chatId, deEmail: mensajesNoVistos[0].email })
+            if(m.email === email){
+                const tick = document.createElement("span");
+                tick.style.marginLeft = "6px";
+                tick.style.fontSize = "0.8rem";
+                tick.textContent = m.visto ? "✔✔" : "✔";
+                div.appendChild(tick);
+            }
+
+            container.appendChild(div);
+            ultimoMensajeId = Math.max(ultimoMensajeId, m.id); // actualizar último id
         });
-        mensajesNoVistos.forEach(m => m.visto = 1);
-      }
-    }
 
-  }catch(err){ console.error("Error al cargar mensajes:", err); }
+        if(estabaAlFinal || forzarScroll) container.scrollTop = container.scrollHeight;
+    }catch(err){ console.error("Error al cargar mensajes:", err); }
 }
-
-// === Enviar mensaje ===
-async function sendMessage(){
-  if(enviandoMensaje) return;
+// Enviar mensaje
+document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
   const texto=document.getElementById("nuevoMensaje").value.trim();
   const archivoInput=document.getElementById("archivoMensaje");
   if(!texto && !archivoInput.files.length) return;
-  enviandoMensaje = true;
-  const formData = new FormData();
-  formData.append("mensaje", texto);
-  if(archivoInput.files.length) formData.append("archivo", archivoInput.files[0]);
+  if(!chatActivoId) return;
+  const formData=new FormData();
+  formData.append("chatId",chatActivoId);
+  formData.append("deEmail",email);
+  formData.append("mensaje",texto);
+  if(archivoInput.files.length) formData.append("archivo",archivoInput.files[0]);
+  
   try{
-    const res = await fetch(`${API}/mensaje/enviar?chatId=${chatActivoId}&email=${email}`, {
-      method:"POST", body: formData
-    });
+    await fetch(`${API}/mensajeArchivo`,{method:"POST",body:formData});
     document.getElementById("nuevoMensaje").value="";
     archivoInput.value="";
     cargarMensajes(chatActivoId, true);
   }catch(err){ console.error("Error al enviar mensaje:", err); }
-  finally{ enviandoMensaje = false; }
-}
-
-document.getElementById("enviarMensaje").addEventListener("click", sendMessage);
-document.getElementById("nuevoMensaje").addEventListener("keydown", e=>{
-  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
 });
 
-// archivo
-document.getElementById("btnArchivo").addEventListener("click", ()=>document.getElementById("archivoMensaje").click());
-document.getElementById("archivoMensaje").addEventListener("change", ()=>{ 
-  const file=document.getElementById("archivoMensaje").files[0];
-  if(file) alert(`Archivo seleccionado: ${file.name}`);
+// Enter para enviar
+document.getElementById("nuevoMensaje").addEventListener("keydown", async e=>{
+  if(e.key === "Enter" && !e.shiftKey){
+    e.preventDefault();
+    document.getElementById("enviarMensaje").click();
+  }
+});
+
+// Archivo
+document.getElementById("archivoMensaje").addEventListener("change", ()=>{
+  const archivo = document.getElementById("archivoMensaje").files[0];
+  document.getElementById("nuevoMensaje").value = archivo ? `Archivo: ${archivo.name}` : "";
+});
+document.getElementById("btnArchivo").addEventListener("click",()=>{document.getElementById("archivoMensaje").click();});
+
+// Enviar solicitud
+document.getElementById("enviarSolicitudBtn").addEventListener("click", async ()=>{
+  const correoDestino=document.getElementById("correoSolicitud").value.trim();
+  const msgDiv=document.getElementById("msgSolicitud");
+  if(!correoDestino){ msgDiv.textContent="Ingresa un correo válido"; msgDiv.className="text-red-600"; return; }
+  try{
+    const res=await fetch(`${API}/solicitud`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deEmail:email,aEmail:correoDestino})});
+    const data=await res.json();
+    msgDiv.textContent=data.message||data.error;
+    msgDiv.className=data.message?"text-green-600":"text-red-600";
+    if(data.message){ document.getElementById("correoSolicitud").value=""; cargarSolicitudes(); }
+  }catch(err){ console.error("Error al enviar solicitud:", err); msgDiv.textContent="Error de conexión"; msgDiv.className="text-red-600"; }
 });
 
 obtenerUsuario();
