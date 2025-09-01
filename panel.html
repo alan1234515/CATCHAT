@@ -217,8 +217,13 @@ async function cargarChats() {
         punto.textContent = cantidadNoLeidos;
         div.appendChild(punto);
       }
-      div.onclick = () => { chatActivoId = c.id; chatHeader.textContent = c.nombre; cargarMensajes(chatActivoId, true); };
-      container.appendChild(div);
+      div.onclick = () => { 
+    chatActivoId = c.id; 
+    chatHeader.textContent = c.nombre; 
+    ultimoMensajeId = 0;  // <-- reiniciar contador de mensajes
+    cargarMensajes(chatActivoId, true); // forzar scroll y actualización
+};
+
     }
   }catch(err){
     console.error("Error al cargar chats:", err);
@@ -279,24 +284,50 @@ async function cargarMensajes(chatId, forzarScroll=false){
         if(estabaAlFinal || forzarScroll) container.scrollTop = container.scrollHeight;
     }catch(err){ console.error("Error al cargar mensajes:", err); }
 }
+async function actualizarMensajes(){
+    if(chatActivoId){
+        // si cambiamos de chat, reiniciamos el último ID
+        if(ultimoMensajeId === 0){
+            await cargarMensajes(chatActivoId, true);
+        } else {
+            await cargarMensajes(chatActivoId);
+        }
+    }
+    await cargarChats();
+    setTimeout(actualizarMensajes, 5000);
+}
+
 // Enviar mensaje
 document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
-  const texto=document.getElementById("nuevoMensaje").value.trim();
-  const archivoInput=document.getElementById("archivoMensaje");
+  const texto = document.getElementById("nuevoMensaje").value.trim();
+  const archivoInput = document.getElementById("archivoMensaje");
+  const btn = document.getElementById("enviarMensaje");
+
   if(!texto && !archivoInput.files.length) return;
   if(!chatActivoId) return;
-  const formData=new FormData();
-  formData.append("chatId",chatActivoId);
-  formData.append("deEmail",email);
-  formData.append("mensaje",texto);
-  if(archivoInput.files.length) formData.append("archivo",archivoInput.files[0]);
-  
-  try{
-    await fetch(`${API}/mensajeArchivo`,{method:"POST",body:formData});
-    document.getElementById("nuevoMensaje").value="";
-    archivoInput.value="";
+
+  // Deshabilitar botón mientras se envía
+  btn.disabled = true;
+  btn.classList.add("opacity-50", "cursor-not-allowed");
+
+  const formData = new FormData();
+  formData.append("chatId", chatActivoId);
+  formData.append("deEmail", email);
+  formData.append("mensaje", texto);
+  if(archivoInput.files.length) formData.append("archivo", archivoInput.files[0]);
+
+  try {
+    await fetch(`${API}/mensajeArchivo`, { method: "POST", body: formData });
+    document.getElementById("nuevoMensaje").value = "";
+    archivoInput.value = "";
     cargarMensajes(chatActivoId, true);
-  }catch(err){ console.error("Error al enviar mensaje:", err); }
+  } catch(err){
+    console.error("Error al enviar mensaje:", err);
+  } finally {
+    // Rehabilitar botón
+    btn.disabled = false;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
+  }
 });
 
 // Enter para enviar
