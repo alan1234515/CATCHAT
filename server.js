@@ -85,6 +85,25 @@ const transporter = nodemailer.createTransport({
 function generarCodigo() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
+//Cloud
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+// Configuración con tus credenciales
+cloudinary.config({
+  cloud_name: 'ddgnjxeka',
+  api_key: '942786513553487',
+  api_secret: 'uJ9L-W0PYqavnnjEIu6XkqdrgvA',
+});
+
+// Crear almacenamiento en Cloudinary
+const cloudStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'uploads', // carpeta dentro de Cloudinary
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'docx', 'xlsx', 'zip'],
+  },
+});
 
 // -------------------- Multer --------------------
 const storage = multer.diskStorage({
@@ -94,7 +113,7 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + "-" + file.originalname);
   }
 });
-const upload = multer({ storage });
+const upload = multer({ storage: cloudStorage });
 
 // -------------------- Rutas principales --------------------
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
@@ -271,8 +290,8 @@ app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
     if (!user) return res.status(400).json({ error: "Usuario no encontrado" });
 
     // URL completa del archivo para que funcione tras recargar
-    const archivoUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
-
+    const archivoUrl = req.file ? req.file.path : null;
+    
     await pool.query(
       "INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)",
       [chatId, user.id, mensaje, archivoUrl]
