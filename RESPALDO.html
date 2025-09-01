@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Panel de Usuario</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/feather-icons"></script>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; }
+  .bubble { display: inline-block; padding: 8px 12px; border-radius: 16px; max-width: 80%; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; transition: all 0.2s ease-in-out; }
+  .bubble-left { background-color: #f3f4f6; color: #111827; align-self: flex-start; }
+  .bubble-right { background-color: #3b82f6; color: white; align-self: flex-end; }
+  .chat-header { font-weight: bold; padding: 12px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 8px; background-color: #2563eb; color: white; font-size: 1rem; }
+  .chat-img { cursor: pointer; max-width: 180px; max-height: 180px; border-radius: 12px; transition: transform 0.2s ease; }
+  .chat-img:hover { transform: scale(1.05); }
+  .overlay { position: fixed; display: none; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 50; }
+  .overlay img { max-width: 90%; max-height: 90%; border-radius: 12px; }
+  .msg-input { display: flex; gap: 8px; padding: 8px; border-top: 1px solid #ddd; background: #f9fafb; align-items: center; }
+  .msg-input input[type="text"] { flex: 1; padding: 8px 12px; border-radius: 999px; border: 1px solid #d1d5db; outline: none; }
+  .msg-input button { background: #3b82f6; color: white; padding: 8px 12px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+  .msg-input button:hover { background: #2563eb; }
+  .user-icon { width: 30px; height: 30px; border-radius: 50%; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
+  .chat-list-item { cursor: pointer; padding: 8px; border-radius: 8px; display: flex; align-items: center; gap: 8px; position: relative; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-list-item:hover { background-color: #e5e7eb; }
+  .unread-dot { width: 10px; height: 10px; background: red; border-radius: 50%; }
+  .scrollbar { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #888 #f3f4f6; }
+  .scrollbar::-webkit-scrollbar { width: 6px; }
+  .scrollbar::-webkit-scrollbar-thumb { background-color: #888; border-radius: 3px; }
+
+  /* Contenedor mensajes */
+#mensajes { flex:1 1 0; min-height:0; overflow-y:auto; }
+
+/* Media queries para móvil */
+@media (max-width:768px){
+  #panel-chat { flex-direction: column; height: calc(100vh - 150px); }
+  #panel-chat > div { width:100% !important; }
+  #lista-chats { max-height:40%; overflow-y:auto; }
+  #mensajes { max-height:60%; }
+  .bubble { max-width:90%; }
+  .chat-img { max-width:120px; max-height:120px; }
+  .msg-input { flex-wrap:wrap; gap:4px; }
+  .msg-input input[type="text"]{ flex:1 1 100%; }
+  .msg-input button{ flex:1 1 auto; padding:6px 8px; }
+}
+
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+<div class="container bg-white p-8 rounded-xl shadow-md w-full max-w-md mb-4">
+  <h2 class="text-2xl font-bold mb-4">Bienvenido, <span id="nombreUsuario"></span></h2>
+  <div id="verificar-section" class="mb-4">
+    <h3 class="text-lg font-semibold mb-2">Verificar tu cuenta</h3>
+    <form id="verificarForm" class="space-y-2">
+      <input type="text" name="codigo" placeholder="Código de verificación" required class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition">Verificar</button>
+    </form>
+    <div id="msg" class="hidden mt-2 p-2 rounded"></div>
+  </div>
+  <button id="cerrarSesion" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition">Cerrar sesión</button>
+</div>
+
+<div id="panel-chat" class="hidden mt-4 flex w-full max-w-6xl h-[600px] border rounded shadow-md overflow-hidden">
+  <div class="w-1/3 border-r p-2 flex flex-col gap-4">
+    <div>
+      <h3 class="font-semibold mb-2">Enviar solicitud</h3>
+      <input id="correoSolicitud" type="email" placeholder="Correo del usuario" class="w-full p-2 border rounded mb-2" />
+      <button id="enviarSolicitudBtn" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition flex items-center gap-2">
+        <i data-feather="send"></i> Enviar
+      </button>
+      <div id="msgSolicitud" class="mt-2"></div>
+    </div>
+
+    <h3 class="font-semibold mb-2">Solicitudes</h3>
+    <div id="solicitudes" class="flex flex-col gap-2 scrollbar max-h-40"></div>
+
+    <h3 class="font-semibold mt-4 mb-2">Chats</h3>
+    <div id="chats" class="flex flex-col gap-2 scrollbar flex-1">
+      <div id="loaderChats" class="text-gray-500 text-center mt-4">Cargando chats...</div>
+    </div>
+  </div>
+
+  <div class="w-2/3 flex flex-col">
+    <div id="chatHeader" class="chat-header">Selecciona un chat</div>
+    <div id="mensajes" class="flex-1 overflow-y-auto p-2 flex flex-col gap-2 scrollbar"></div>
+
+    <div class="msg-input">
+      <button id="btnArchivo"><i data-feather="paperclip"></i></button>
+      <input id="archivoMensaje" type="file" class="hidden" />
+      <input id="nuevoMensaje" type="text" placeholder="Escribe tu mensaje..." />
+      <button id="enviarMensaje"><i data-feather="send"></i></button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" class="overlay flex" onclick="this.style.display='none'">
+  <img id="overlayImg" src="" />
+</div>
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+
+<script>
+feather.replace();
+const API = "https://catchat12.onrender.com";
+const nombreUsuario=document.getElementById("nombreUsuario");
+const email=localStorage.getItem("usuarioEmail");
+const verificarSection=document.getElementById("verificar-section");
+const form=document.getElementById("verificarForm");
+const msg=document.getElementById("msg");
+const cerrar=document.getElementById("cerrarSesion");
+const chatHeader=document.getElementById("chatHeader");
+let chatActivoId=null;
+
+if(!email) window.location.href="login.html";
+
+async function obtenerUsuario(){
+  try{
+    const res=await fetch(`${API}/usuario?email=${email}`);
+    const data=await res.json();
+    if(data.error) return window.location.href="login.html";
+    nombreUsuario.textContent=data.nombre;
+    if(data.verificado){ verificarSection.style.display="none"; cargarPanel(); }
+  }catch(err){ console.error("Error al obtener usuario:", err); }
+}
+
+form.addEventListener("submit", async e=>{
+  e.preventDefault();
+  const codigo=form.codigo.value;
+  try{
+    const res=await fetch(`${API}/verificar`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,codigo})});
+    const data=await res.json();
+    msg.textContent=data.message||data.error;
+    msg.className="mt-2 p-2 rounded "+(data.message?"bg-green-200 text-green-800":"bg-red-200 text-red-800");
+    msg.classList.remove("hidden");
+    if(data.message) setTimeout(()=>{ verificarSection.style.display="none"; cargarPanel(); },1000);
+  }catch(err){
+    console.error("Error al verificar:", err);
+    msg.textContent="Error de conexión";
+    msg.className="mt-2 p-2 rounded bg-red-200 text-red-800";
+    msg.classList.remove("hidden");
+  }
+});
+
+cerrar.addEventListener("click", ()=>{ localStorage.removeItem("usuarioEmail"); window.location.href="login.html"; });
+
+async function cargarPanel(){
+  document.getElementById("panel-chat").classList.remove("hidden");
+  await cargarSolicitudes();
+  await cargarChats();
+  async function actualizarMensajes(){
+    if(chatActivoId) await cargarMensajes(chatActivoId);
+    await cargarChats();
+    setTimeout(actualizarMensajes, 5000); // llama recursivamente
+}
+actualizarMensajes();
+
+}
+
+async function cargarSolicitudes(){
+  try{
+    const res=await fetch(`${API}/solicitudes?email=${email}`);
+    const solicitudes=await res.json();
+    const container=document.getElementById("solicitudes");
+    container.innerHTML="";
+    solicitudes.forEach(s=>{
+      const div=document.createElement("div");
+      div.className="flex justify-between items-center bg-gray-100 p-2 rounded shadow-sm";
+      div.textContent=`${s.nombre} (${s.email})`;
+      const aceptar=document.createElement("button");
+      aceptar.textContent="Aceptar";
+      aceptar.className="ml-2 bg-green-500 text-white px-2 rounded hover:bg-green-600";
+      aceptar.onclick=async ()=>{
+        await fetch(`${API}/solicitud/aceptar`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({solicitudId:s.id})});
+        cargarSolicitudes(); cargarChats();
+      };
+      div.appendChild(aceptar);
+      container.appendChild(div);
+    });
+  }catch(err){ console.error("Error al cargar solicitudes:", err); }
+}
+
+async function cargarChats() {
+  const loader = document.getElementById("loaderChats");
+  loader.style.display = "block";
+  try{
+    const res = await fetch(`${API}/chats?email=${email}`);
+    const chats = await res.json();
+    const container = document.getElementById("chats");
+    container.innerHTML = "";
+
+    if(!chats || chats.length===0){
+      container.innerHTML = "<div class='text-gray-500 text-center mt-4'>No hay chats disponibles</div>";
+      return;
+    }
+
+    for (const c of chats) {
+      const div = document.createElement("div");
+      div.className = "chat-list-item relative";
+      const ultimo = c.ultimoMensaje ? (c.ultimoMensaje.length > 30 ? c.ultimoMensaje.slice(0,30) + "..." : c.ultimoMensaje) : "";
+      let horaUltimo = "";
+      if(c.fechaUltimoMensaje){
+        const fechaUTC = new Date(c.fechaUltimoMensaje);
+        const fechaEcuador = new Date(fechaUTC.getTime() - 5*60*60*1000);
+        horaUltimo = `<span class="text-gray-400 text-xs ml-1">${fechaEcuador.getHours().toString().padStart(2,'0')}:${fechaEcuador.getMinutes().toString().padStart(2,'0')}</span>`;
+      }
+      div.innerHTML = `<div class="user-icon">${c.nombre.charAt(0)}</div>
+                       <div class="flex flex-col">
+                         <span>${c.nombre}${horaUltimo}</span>
+                         <span class="text-gray-500 text-sm">${ultimo}</span>
+                       </div>`;
+
+      const cantidadNoLeidos = c.cantidadNoLeidos || 0;
+      if (cantidadNoLeidos > 0 && chatActivoId !== c.id) {
+        const punto = document.createElement("span");
+        punto.className = "unread-dot absolute right-2 top-2 text-white text-xs flex items-center justify-center";
+        punto.style.width = "18px";
+        punto.style.height = "18px";
+        punto.style.background = "red";
+        punto.style.borderRadius = "50%";
+        punto.textContent = cantidadNoLeidos;
+        div.appendChild(punto);
+      }
+
+      // Al hacer clic en un chat
+      div.addEventListener("click", () => { 
+        chatActivoId = c.id; 
+        chatHeader.textContent = c.nombre; 
+        ultimoMensajeId = 0;  // reinicia contador de mensajes
+        cargarMensajes(chatActivoId, true); // cargar mensajes y hacer scroll
+      });
+
+      // **Agregamos el div al contenedor**
+      container.appendChild(div);
+    }
+  }catch(err){
+    console.error("Error al cargar chats:", err);
+    const container = document.getElementById("chats");
+    container.innerHTML = "<div class='text-red-600 text-center mt-4'>Error al cargar chats</div>";
+  }finally{
+    loader.style.display="none";
+  }
+}
+
+let ultimoMensajeId = 0;
+async function cargarMensajes(chatId, forzarScroll=false){
+    const container = document.getElementById("mensajes");
+    const estabaAlFinal = container.scrollHeight - container.scrollTop <= container.clientHeight + 5;
+
+    try{
+        const res = await fetch(`${API}/mensajes?chatId=${chatId}&desdeId=${ultimoMensajeId}`);
+        const mensajes = await res.json();
+
+        mensajes.forEach(m => {
+            const div = document.createElement("div");
+            div.className = m.email === email ? "bubble bubble-right" : "bubble bubble-left";
+
+            let horaMensaje = "";
+            if(m.fecha){
+                const fechaUTC = new Date(m.fecha);
+                const fechaEcuador = new Date(fechaUTC.getTime() - 5*60*60*1000);
+                horaMensaje = `<span style="font-size:0.7rem; color:#666; margin-left:4px;">
+                                ${fechaEcuador.getHours().toString().padStart(2,'0')}:${fechaEcuador.getMinutes().toString().padStart(2,'0')}
+                               </span>`;
+            }
+
+            if(m.archivo && m.archivo.match(/\.(jpg|jpeg|png|gif)$/i)){
+                div.innerHTML = `<strong>${m.nombre}:</strong><br>
+                                 <img src="${m.archivo}" class="chat-img" 
+                                 onclick="document.getElementById('overlayImg').src='${m.archivo}';
+                                          document.getElementById('overlay').style.display='flex';">
+                                 ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
+            } else if(m.archivo){
+                div.innerHTML = `<strong>${m.nombre}:</strong> 
+                                 <a href="${m.archivo}" target="_blank" class="text-blue-600 underline">📎 Ver archivo</a>
+                                 ${m.mensaje?'<br>'+m.mensaje:''}${horaMensaje}`;
+            } else{
+                div.innerHTML = `<strong>${m.nombre}:</strong> ${m.mensaje||""}${horaMensaje}`;
+            }
+
+            if(m.email === email){
+                const tick = document.createElement("span");
+                tick.style.marginLeft = "6px";
+                tick.style.fontSize = "0.8rem";
+                tick.textContent = m.visto ? "✔✔" : "✔";
+                div.appendChild(tick);
+            }
+
+            container.appendChild(div);
+            ultimoMensajeId = Math.max(ultimoMensajeId, m.id); // actualizar último id
+        });
+
+        if(estabaAlFinal || forzarScroll) container.scrollTop = container.scrollHeight;
+    }catch(err){ console.error("Error al cargar mensajes:", err); }
+}
+async function actualizarMensajes(){
+    if(chatActivoId){
+        // si cambiamos de chat, reiniciamos el último ID
+        if(ultimoMensajeId === 0){
+            await cargarMensajes(chatActivoId, true);
+        } else {
+            await cargarMensajes(chatActivoId);
+        }
+    }
+    await cargarChats();
+    setTimeout(actualizarMensajes, 5000);
+}
+
+// Enviar mensaje
+document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
+  const texto = document.getElementById("nuevoMensaje").value.trim();
+  const archivoInput = document.getElementById("archivoMensaje");
+  const btn = document.getElementById("enviarMensaje");
+
+  if(!texto && !archivoInput.files.length) return;
+  if(!chatActivoId) return;
+
+  // Deshabilitar botón mientras se envía
+  btn.disabled = true;
+  btn.classList.add("opacity-50", "cursor-not-allowed");
+
+  const formData = new FormData();
+  formData.append("chatId", chatActivoId);
+  formData.append("deEmail", email);
+  formData.append("mensaje", texto);
+  if(archivoInput.files.length) formData.append("archivo", archivoInput.files[0]);
+
+  try {
+    await fetch(`${API}/mensajeArchivo`, { method: "POST", body: formData });
+    document.getElementById("nuevoMensaje").value = "";
+    archivoInput.value = "";
+    cargarMensajes(chatActivoId, true);
+  } catch(err){
+    console.error("Error al enviar mensaje:", err);
+  } finally {
+    // Rehabilitar botón
+    btn.disabled = false;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
+  }
+});
+
+// Enter para enviar
+document.getElementById("nuevoMensaje").addEventListener("keydown", async e=>{
+  if(e.key === "Enter" && !e.shiftKey){
+    e.preventDefault();
+    document.getElementById("enviarMensaje").click();
+  }
+});
+
+// Archivo
+document.getElementById("archivoMensaje").addEventListener("change", ()=>{
+  const archivo = document.getElementById("archivoMensaje").files[0];
+  document.getElementById("nuevoMensaje").value = archivo ? `Archivo: ${archivo.name}` : "";
+});
+document.getElementById("btnArchivo").addEventListener("click",()=>{document.getElementById("archivoMensaje").click();});
+
+// Enviar solicitud
+document.getElementById("enviarSolicitudBtn").addEventListener("click", async ()=>{
+  const correoDestino=document.getElementById("correoSolicitud").value.trim();
+  const msgDiv=document.getElementById("msgSolicitud");
+  if(!correoDestino){ msgDiv.textContent="Ingresa un correo válido"; msgDiv.className="text-red-600"; return; }
+  try{
+    const res=await fetch(`${API}/solicitud`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deEmail:email,aEmail:correoDestino})});
+    const data=await res.json();
+    msgDiv.textContent=data.message||data.error;
+    msgDiv.className=data.message?"text-green-600":"text-red-600";
+    if(data.message){ document.getElementById("correoSolicitud").value=""; cargarSolicitudes(); }
+  }catch(err){ console.error("Error al enviar solicitud:", err); msgDiv.textContent="Error de conexión"; msgDiv.className="text-red-600"; }
+});
+
+obtenerUsuario();
+</script>
+</body>
+</html>

@@ -10,6 +10,34 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = process.env.PORT || 1000;
 
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*', // Ajusta según tu frontend
+  }
+});
+
+server.listen(3000, () => console.log('Servidor escuchando en puerto 3000'));
+
+// Eventos de Socket.IO
+io.on('connection', (socket) => {
+  console.log('Usuario conectado:', socket.id);
+
+  // Escucha cuando alguien envía un mensaje
+  socket.on('enviarMensaje', (data) => {
+    // data = {chatId, mensaje, deEmail, archivo}
+    // Reenvía el mensaje a todos los usuarios conectados (o puedes filtrar por chatId)
+    io.emit('nuevoMensaje', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Usuario desconectado:', socket.id);
+  });
+});
+
 // -------------------- Middleware --------------------
 app.use(cors());
 app.use(bodyParser.json());
@@ -291,7 +319,7 @@ app.post("/mensajeArchivo", upload.single("archivo"), async (req, res) => {
 
     // URL completa del archivo para que funcione tras recargar
     const archivoUrl = req.file ? req.file.path : null;
-    
+
     await pool.query(
       "INSERT INTO mensajes (chat_id,de_usuario_id,mensaje,archivo) VALUES ($1,$2,$3,$4)",
       [chatId, user.id, mensaje, archivoUrl]
