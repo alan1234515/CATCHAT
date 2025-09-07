@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Panel de Usuario</title>
+<title>Catchat - Panel de Chat</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/feather-icons"></script>
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
@@ -18,9 +18,8 @@
   #mensajes { flex:1 1 0; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:0.25rem; }
   .unread-dot { font-size:0.75rem; }
   @media (max-width:768px){
-    #panel-chat { flex-direction:column; height: calc(100vh - 150px); }
+    #panel-chat { flex-direction:column; height: calc(100vh - 50px); }
     #panel-chat > div { width:100% !important; }
-    #lista-chats { max-height:40%; overflow-y:auto; }
     #mensajes { max-height:60%; }
     .bubble { max-width:90%; }
     .chat-img { max-width:120px; max-height:120px; }
@@ -29,34 +28,10 @@
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
 
-<!-- Panel de verificación -->
-<div class="container bg-white p-8 rounded-xl shadow-md w-full max-w-md mb-4">
-  <h2 class="text-2xl font-bold mb-4">Panel de Usuario</h2>
-  <div id="verificar-section" class="mb-4">
-    <h3 class="text-lg font-semibold mb-2">Verificar tu cuenta</h3>
-    <form id="verificarForm" class="space-y-2">
-      <input type="text" name="codigo" placeholder="Código de verificación" required class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400">
-      <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition">Verificar</button>
-    </form>
-    <div id="msg" class="hidden mt-2 p-2 rounded"></div>
-  </div>
-  <button id="cerrarSesion" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition">Cerrar sesión</button>
-</div>
-
 <!-- Panel de chat -->
-<div id="panel-chat" class="hidden mt-4 flex w-full max-w-6xl h-[600px] border rounded shadow-md overflow-hidden">
+<div id="panel-chat" class="flex w-full max-w-6xl h-[600px] border rounded shadow-md overflow-hidden">
   <div class="w-1/3 border-r p-2 flex flex-col gap-4">
-    <div>
-      <h3 class="font-semibold mb-2">Enviar solicitud</h3>
-      <input id="correoSolicitud" type="email" placeholder="Correo del usuario" class="w-full p-2 border rounded mb-2" />
-      <button id="enviarSolicitudBtn" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition flex items-center gap-2">
-        <i data-feather="send"></i> Enviar
-      </button>
-      <div id="msgSolicitud" class="mt-2"></div>
-    </div>
-    <h3 class="font-semibold mb-2">Solicitudes</h3>
-    <div id="solicitudes" class="flex flex-col gap-2 scrollbar max-h-40"></div>
-    <h3 class="font-semibold mt-4 mb-2">Chats</h3>
+    <h3 class="font-semibold mb-2">Chats</h3>
     <div id="chats" class="flex flex-col gap-2 scrollbar flex-1"></div>
   </div>
   <div class="w-2/3 flex flex-col">
@@ -71,21 +46,15 @@
   </div>
 </div>
 
-<div id="overlay" class="overlay flex" onclick="this.style.display='none'">
-  <img id="overlayImg" src="" />
+<div id="overlay" class="overlay flex hidden fixed top-0 left-0 right-0 bottom-0 bg-black/70 justify-center items-center z-50" onclick="this.style.display='none'">
+  <img id="overlayImg" src="" class="max-w-[90%] max-h-[90%] rounded-xl" />
 </div>
 
 <script>
 feather.replace();
-
 const API = "https://catchat12.onrender.com";
 const socket = io(API);
-const email = localStorage.getItem("usuarioEmail");
-const verificarSection = document.getElementById("verificar-section");
-const form = document.getElementById("verificarForm");
-const msg = document.getElementById("msg");
-const cerrar = document.getElementById("cerrarSesion");
-const chatHeader = document.getElementById("chatHeader");
+const email = localStorage.getItem("usuarioEmail") || "usuarioPrueba@example.com";
 let chatActivoId = null;
 let ultimoMensajeId = 0;
 
@@ -95,56 +64,6 @@ async function apiFetch(endpoint, options={}) {
   catch(err){ console.error("API error:", err); return { error: "Error de conexión" }; }
 }
 
-// Obtener usuario y mantener sesión si ya verificado
-async function obtenerUsuario(){
-  if(!email) return window.location.href="login.html";
-  const data = await apiFetch(`/usuario?email=${email}`);
-  if(data.error) return window.location.href="login.html";
-  if(data.verificado){
-    verificarSection.style.display="none";
-    cargarPanel();
-  }
-}
-
-form.addEventListener("submit", async e=>{
-  e.preventDefault();
-  const codigo = form.codigo.value;
-  const data = await apiFetch("/verificar",{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email,codigo})});
-  msg.textContent = data.message || data.error;
-  msg.className = "mt-2 p-2 rounded " + (data.message?"bg-green-200 text-green-800":"bg-red-200 text-red-800");
-  msg.classList.remove("hidden");
-  if(data.message) setTimeout(()=>{ verificarSection.style.display="none"; cargarPanel(); },1000);
-});
-
-cerrar.addEventListener("click", ()=>{ localStorage.removeItem("usuarioEmail"); window.location.href="login.html"; });
-
-// Cargar panel
-async function cargarPanel(){
-  document.getElementById("panel-chat").classList.remove("hidden");
-  socket.emit("usuarioConectado", email);
-  await cargarSolicitudes();
-  await cargarChats();
-}
-
-// Cargar solicitudes
-async function cargarSolicitudes(){
-  const solicitudes = await apiFetch(`/solicitudes?email=${email}`);
-  const cont = document.getElementById("solicitudes"); cont.innerHTML="";
-  if(!solicitudes || solicitudes.length===0){ cont.innerHTML="<p class='text-gray-500'>No tienes solicitudes</p>"; return; }
-  solicitudes.forEach(s=>{
-    const div = document.createElement("div");
-    div.className="flex justify-between items-center bg-gray-100 p-2 rounded";
-    div.innerHTML=`<span>${s.nombre} (${s.email})</span><button class="bg-green-500 text-white px-2 py-1 rounded aceptarSolicitud" data-id="${s.id}">Aceptar</button>`;
-    cont.appendChild(div);
-  });
-  cont.querySelectorAll(".aceptarSolicitud").forEach(btn=>{
-    btn.onclick = async ()=>{
-      await apiFetch("/solicitud/aceptar",{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({solicitudId:btn.dataset.id})});
-      cargarSolicitudes(); cargarChats();
-    };
-  });
-}
-
 // Cargar chats
 async function cargarChats(){
   const chats = await apiFetch(`/chats?email=${email}`);
@@ -152,77 +71,78 @@ async function cargarChats(){
   if(!chats || chats.length===0){ container.innerHTML="<div class='text-gray-500 text-center mt-4'>No hay chats</div>"; return; }
   chats.forEach(c=>{
     const div = document.createElement("div");
-    div.className="chat-list-item relative"; div.dataset.id=c.id;
+    div.className="chat-list-item p-2 border rounded cursor-pointer"; div.dataset.id=c.id;
     const ultimo = c.ultimoMensaje ? (c.ultimoMensaje.slice(0,30)+(c.ultimoMensaje.length>30?"...":"")) : "";
-    let horaUlt="";
-    if(c.fechaUltimoMensaje){ const f = new Date(c.fechaUltimoMensaje); horaUlt=`<span class="text-gray-400 text-xs ml-1">${f.getHours().toString().padStart(2,'0')}:${f.getMinutes().toString().padStart(2,'0')}</span>`; }
-    div.innerHTML=`<div class="user-icon">${c.nombre.charAt(0)}</div><div class="flex flex-col"><span>${c.nombre}${horaUlt}</span><span class="text-gray-500 text-sm">${ultimo}</span></div>`;
-    if(c.cantidadNoLeidos && chatActivoId!==c.id){
-      const badge=document.createElement("span");
-      badge.className="unread-dot absolute right-2 top-2 text-white text-xs flex items-center justify-center";
-      badge.style.width="18px"; badge.style.height="18px"; badge.style.background="red"; badge.style.borderRadius="50%";
-      badge.textContent=c.cantidadNoLeidos; div.appendChild(badge);
-    }
-    div.onclick = ()=>{ chatActivoId=c.id; chatHeader.textContent=c.nombre; cargarMensajes(chatActivoId,true); };
+    div.innerHTML=`<strong>${c.nombre}</strong><br><span class="text-gray-500 text-sm">${ultimo}</span>`;
+    div.onclick = ()=>{ chatActivoId=c.id; document.getElementById("chatHeader").textContent=c.nombre; cargarMensajes(chatActivoId,true); };
     container.appendChild(div);
   });
 }
 
 // Cargar mensajes
-async function cargarMensajes(chatId, forzarScroll=false){
+async function cargarMensajes(chatId, limpiar=false){
   const container=document.getElementById("mensajes");
+  if(limpiar) container.innerHTML="";
   const mensajes = await apiFetch(`/mensajes?chatId=${chatId}&desde=${ultimoMensajeId}`);
-  if(!mensajes || mensajes.length===0) return;
-
-  const scrollAbajo = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
-  if(forzarScroll) container.innerHTML="";
-
-  mensajes.forEach(m=> renderMensaje(m, forzarScroll || scrollAbajo));
-
-  if(forzarScroll) marcarVisto(chatId);
+  if(!mensajes) return;
+  mensajes.forEach(m=> renderMensaje(m));
+  container.scrollTop = container.scrollHeight;
 }
 
 // Renderizar mensaje
-function renderMensaje(m, scroll=true){
+function renderMensaje(m){
   const container=document.getElementById("mensajes");
   const div=document.createElement("div");
   div.className = m.email===email?"bubble bubble-right":"bubble bubble-left";
   let hora="";
   if(m.fecha){ const f=new Date(m.fecha); hora=`<span style="font-size:0.7rem;color:#666;margin-left:4px">${f.getHours().toString().padStart(2,'0')}:${f.getMinutes().toString().padStart(2,'0')}</span>`; }
-  div.innerHTML=`<strong>${m.nombre}:</strong> ${m.mensaje||""}${hora}`;
+
+  if(m.archivo && m.archivo.match(/\.(jpg|jpeg|png|gif)$/i)){
+    div.innerHTML=`<strong>${m.nombre}:</strong><br><img src="${m.archivo}" class="chat-img" onclick="document.getElementById('overlayImg').src='${m.archivo}';document.getElementById('overlay').style.display='flex'">${m.mensaje?'<br>'+m.mensaje:''}${hora}`;
+  } else if(m.archivo){
+    div.innerHTML=`<strong>${m.nombre}:</strong> <a href="${m.archivo}" target="_blank" class="text-blue-600 underline">📎 Ver archivo</a>${m.mensaje?'<br>'+m.mensaje:''}${hora}`;
+  } else {
+    div.innerHTML=`<strong>${m.nombre}:</strong> ${m.mensaje||""}${hora}`;
+  }
+
   if(m.email===email){
     const tick=document.createElement("span"); tick.style.marginLeft="6px"; tick.style.fontSize="0.8rem"; tick.textContent=m.visto?"✔✔":"✔";
     div.appendChild(tick);
   }
+
   container.appendChild(div);
-  if(scroll) container.scrollTop = container.scrollHeight;
+  container.scrollTop = container.scrollHeight;
   ultimoMensajeId = Math.max(ultimoMensajeId, m.id);
 }
 
-// Marcar visto
-function marcarVisto(chatId){ socket.emit("marcarVisto",{chatId,email}); }
-
 // Enviar mensaje
-document.getElementById("enviarMensaje").addEventListener("click", ()=>{
-  const texto=document.getElementById("nuevoMensaje").value.trim();
-  const archivoInput=document.getElementById("archivoMensaje");
+document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
+  const texto = document.getElementById("nuevoMensaje").value.trim();
+  const archivoInput = document.getElementById("archivoMensaje");
   if(!chatActivoId || (!texto && !archivoInput.files.length)) return;
 
-  const formData=new FormData();
-  formData.append("chatId",chatActivoId); formData.append("deEmail",email); formData.append("mensaje",texto);
-  if(archivoInput.files.length) formData.append("archivo",archivoInput.files[0]);
+  const formData = new FormData();
+  formData.append("chatId", chatActivoId);
+  formData.append("deEmail", email);
+  formData.append("mensaje", texto);
+  if(archivoInput.files.length) formData.append("archivo", archivoInput.files[0]);
 
-  fetch(API+"/mensajeArchivo",{method:"POST",body:formData}).then(res=>res.json()).then(data=>{
-    document.getElementById("nuevoMensaje").value=""; archivoInput.value="";
-    renderMensaje(data.mensaje); socket.emit("nuevoMensaje",data.mensaje);
-  });
+  const btn = document.getElementById("enviarMensaje");
+  btn.disabled = true;
+
+  const data = await fetch(`${API}/mensajeArchivo`, {method:"POST", body: formData}).then(res=>res.json());
+  document.getElementById("nuevoMensaje").value=""; archivoInput.value="";
+  renderMensaje(data.mensaje); // se agrega inmediato
+  socket.emit("nuevoMensaje", data.mensaje);
+  btn.disabled = false;
 });
 
-// Socket.io
-socket.on("nuevoMensaje",(msg)=>{ if(chatActivoId===msg.chatId){ renderMensaje(msg,true); marcarVisto(msg.chatId); } });
-socket.on("mensajeVisto",({mensajeId})=>{ document.querySelectorAll(".bubble-right span").forEach(t=>{ t.textContent="✔✔"; }); });
+// Socket.io para mensajes en tiempo real
+socket.on("nuevoMensaje", (msg) => { if(chatActivoId===msg.chatId) renderMensaje(msg); });
+socket.on("mensajeVisto", ({mensajeId})=>{ document.querySelectorAll(".bubble-right span").forEach(t=>{ t.textContent="✔✔"; }); });
 
-obtenerUsuario();
+// Inicializar
+cargarChats();
 </script>
 </body>
 </html>
