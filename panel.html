@@ -52,36 +52,48 @@
 
 <script>
 feather.replace();
+
 const API = "https://catchat12.onrender.com";
 const socket = io(API);
 
-let usuario = JSON.parse(localStorage.getItem("usuario")) || { nombre: "Invitado", email: "usuarioPrueba@example.com", id: 1 };
+// Recuperar usuario de sesión
+let usuario = JSON.parse(localStorage.getItem("usuario"));
+if (!usuario) {
+  alert("No has iniciado sesión");
+  window.location.href = "/login.html";
+}
+const email = usuario.email;
 let chatActivoId = null;
 let ultimoMensajeId = 0;
 
-// Helper API fetch
+// Helper fetch
 async function apiFetch(endpoint, options={}) {
   try { const res = await fetch(`${API}${endpoint}`, options); return await res.json(); }
   catch(err){ console.error("API error:", err); return { error: "Error de conexión" }; }
 }
 
-// -------------------- Chats --------------------
+// -------------------- CARGAR CHATS --------------------
 async function cargarChats(){
-  const chats = await apiFetch(`/chats?email=${usuario.email}`);
+  const chats = await apiFetch(`/chats?email=${email}`);
   const container = document.getElementById("chats"); container.innerHTML="";
   if(!chats || chats.length===0){ container.innerHTML="<div class='text-gray-500 text-center mt-4'>No hay chats</div>"; return; }
   chats.forEach(c=>{
     const div = document.createElement("div");
     div.className="chat-list-item p-2 border rounded cursor-pointer"; div.dataset.id=c.id;
     const ultimo = c.ultimoMensaje ? (c.ultimoMensaje.slice(0,30)+(c.ultimoMensaje.length>30?"...":"")) : "";
-    const badge = c.cantidadNoLeidos>0 ? `<span class="unread-dot text-red-600 font-bold"> • ${c.cantidadNoLeidos}</span>` : "";
-    div.innerHTML=`<strong>${c.nombre}</strong>${badge}<br><span class="text-gray-500 text-sm">${ultimo}</span>`;
-    div.onclick = ()=>{ chatActivoId=c.id; document.getElementById("chatHeader").textContent=c.nombre; cargarMensajes(chatActivoId,true); };
+    const unread = c.cantidadNoLeidos > 0 ? `<span class="unread-dot text-red-500">•</span>` : "";
+    div.innerHTML=`<strong>${c.nombre}</strong> ${unread}<br><span class="text-gray-500 text-sm">${ultimo}</span>`;
+    div.onclick = ()=>{ 
+      chatActivoId=c.id; 
+      document.getElementById("chatHeader").textContent=c.nombre; 
+      ultimoMensajeId = 0;
+      cargarMensajes(chatActivoId,true); 
+    };
     container.appendChild(div);
   });
 }
 
-// -------------------- Mensajes --------------------
+// -------------------- CARGAR MENSAJES --------------------
 async function cargarMensajes(chatId, limpiar=false){
   const container=document.getElementById("mensajes");
   if(limpiar) container.innerHTML="";
@@ -90,19 +102,15 @@ async function cargarMensajes(chatId, limpiar=false){
   mensajes.forEach(m=> renderMensaje(m));
   container.scrollTop = container.scrollHeight;
 
-  // Marcar como vistos
-  await fetch(`${API}/mensaje/visto`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chatId, usuarioId: usuario.id })
-  });
+  // Marcar como vistos los mensajes recibidos
+  socket.emit("mensajesVistos", { chatId, deEmail: email });
 }
 
-// Renderizar mensaje
+// -------------------- RENDERIZAR MENSAJE --------------------
 function renderMensaje(m){
   const container=document.getElementById("mensajes");
   const div=document.createElement("div");
-  div.className = m.email===usuario.email?"bubble bubble-right":"bubble bubble-left";
+  div.className = m.email===email?"bubble bubble-right":"bubble bubble-left";
   let hora="";
   if(m.fecha){ const f=new Date(m.fecha); hora=`<span style="font-size:0.7rem;color:#666;margin-left:4px">${f.getHours().toString().padStart(2,'0')}:${f.getMinutes().toString().padStart(2,'0')}</span>`; }
 
@@ -114,7 +122,7 @@ function renderMensaje(m){
     div.innerHTML=`<strong>${m.nombre}:</strong> ${m.mensaje||""}${hora}`;
   }
 
-  if(m.email===usuario.email){
+  if(m.email===email){
     const tick=document.createElement("span"); tick.style.marginLeft="6px"; tick.style.fontSize="0.8rem"; tick.textContent=m.visto?"✔✔":"✔";
     div.appendChild(tick);
   }
@@ -124,36 +132,44 @@ function renderMensaje(m){
   ultimoMensajeId = Math.max(ultimoMensajeId, m.id);
 }
 
-// -------------------- Enviar mensaje --------------------
-document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
-  if(!chatActivoId) return;
+// -------------------- ENVIAR MENSAJE --------------------
+document.getElementById("enviarMensaje").addEventListener("click", enviarMensaje);
+document.getElementById("btnArchivo").addEventListener("click",()=>document.getElementById("archivoMensaje").click());
+
+async function enviarMensaje(){
   const texto = document.getElementById("nuevoMensaje").value.trim();
   const archivoInput = document.getElementById("archivoMensaje");
-  if(!texto && !archivoInput.files.length) return;
+  if(!chatActivoId || (!texto && !archivoInput.files.length)) return;
 
   const formData = new FormData();
   formData.append("chatId", chatActivoId);
-  formData.append("deEmail", usuario.email);
+  formData.append("deEmail", email);
   formData.append("mensaje", texto);
   if(archivoInput.files.length) formData.append("archivo", archivoInput.files[0]);
 
-  const btn = document.getElementById("enviarMensaje");
-  btn.disabled = true;
+  const btn = document.getElementById("enviarMensaje"); btn.disabled = true;
 
-  const data = await fetch(`${API}/mensajeArchivo`, { method:"POST", body: formData }).then(res=>res.json());
+  const data = await fetch(`${API}/mensajeArchivo`, {method:"POST", body: formData}).then(res=>res.json());
   document.getElementById("nuevoMensaje").value=""; archivoInput.value="";
-  renderMensaje(data.mensaje);
+  
+  // Render inmediato
+  if(data.archivo || texto) {
+    renderMensaje({ id: Date.now(), mensaje: texto, archivo: data.archivo, nombre: usuario.nombre, email, visto:false, fecha: new Date() });
+    socket.emit("nuevoMensaje", { ...data, chatId: chatActivoId });
+  }
   btn.disabled = false;
+}
+
+// -------------------- SOCKET.IO --------------------
+socket.on("nuevoMensaje", (msg) => { 
+  if(chatActivoId===msg.chatId) renderMensaje(msg); 
 });
 
-// -------------------- Socket.io --------------------
-socket.on("nuevoMensaje", (msg) => { if(chatActivoId===msg.chat_id) renderMensaje(msg); });
-socket.on("mensajeVisto", ({ chatId: idChat }) => { if(chatActivoId===idChat) document.querySelectorAll(".bubble-right span").forEach(t=>t.textContent="✔✔"); });
+socket.on("mensajeVisto", ({mensajeId})=>{
+  document.querySelectorAll(".bubble-right span").forEach(t=>{ t.textContent="✔✔"; });
+});
 
-// -------------------- Archivo input --------------------
-document.getElementById("btnArchivo").addEventListener("click", ()=>document.getElementById("archivoMensaje").click());
-
-// -------------------- Inicializar --------------------
+// -------------------- INICIALIZAR --------------------
 cargarChats();
 </script>
 </body>
