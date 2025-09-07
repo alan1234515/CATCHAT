@@ -318,6 +318,50 @@ setInterval(()=>{
         cargarMensajes(chatActivoId);
     }
 }, 2000);
+// Cargar solicitudes pendientes
+async function cargarSolicitudes() {
+  try {
+    const res = await fetch(`${API}/solicitudes?email=${email}`);
+    const solicitudes = await res.json();
+
+    const contenedor = document.getElementById("solicitudes");
+    contenedor.innerHTML = ""; // limpiar antes de volver a renderizar
+
+    if (solicitudes.length === 0) {
+      contenedor.innerHTML = "<p class='text-gray-500'>No tienes solicitudes</p>";
+      return;
+    }
+
+    solicitudes.forEach(sol => {
+      const div = document.createElement("div");
+      div.className = "flex justify-between items-center bg-gray-100 p-2 rounded";
+
+      div.innerHTML = `
+        <span>${sol.nombre} (${sol.email})</span>
+        <button class="bg-green-500 text-white px-2 py-1 rounded aceptarSolicitud" data-id="${sol.id}">
+          Aceptar
+        </button>
+      `;
+      contenedor.appendChild(div);
+    });
+
+    // Event listener para aceptar
+    document.querySelectorAll(".aceptarSolicitud").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        await fetch(`${API}/solicitud/aceptar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ solicitudId: id })
+        });
+        cargarSolicitudes(); // refrescar
+        cargarChats(); // cargar el nuevo chat
+      });
+    });
+  } catch (err) {
+    console.error("Error al cargar solicitudes:", err);
+  }
+}
 
 // Enviar mensaje
 document.getElementById("enviarMensaje").addEventListener("click", async ()=>{
